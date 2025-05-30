@@ -176,7 +176,7 @@ INSERT INTO System_User (username, email, password_hash, role_id, first_name, la
 SELECT 
     'admin',
     'admin@senseguard.local',
-    '$2a$12$8vJ.QGH5gKqY5vJ.QGH5gOqJ8vJ.QGH5gKqY5vJ.QGH5gOqJ8vJ.QG',
+    '$2b$12$DF0N9s4/elrEhQzUnuzrtuwK6JGK.XhV85xTfMRve15KH/y6u.bQu',
     role_id,
     'System',
     'Administrator',
@@ -190,7 +190,7 @@ INSERT INTO System_User (username, email, password_hash, role_id, first_name, la
 SELECT 
     'viewer',
     'viewer@senseguard.local',
-    '$2a$12$7uI.PGH5fJpX4uI.PGH5fNpI7uI.PGH5fJpX4uI.PGH5fNpI7uI.PF',
+    '$2b$12$1402BMPyDy21zXijntLhIe.GHV1CeMulgMOM4eILlRM1zC1PlJCti',
     ur.role_id,
     'System',
     'Viewer',

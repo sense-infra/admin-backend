@@ -218,6 +218,12 @@
             border: 1px solid #feb2b2;
         }
 
+        .alert-info {
+            background: #bee3f8;
+            color: #2a69ac;
+            border: 1px solid #90cdf4;
+        }
+
         .status-badge {
             padding: 4px 8px;
             border-radius: 12px;
@@ -267,6 +273,51 @@
             margin-top: 5px;
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            color: #667eea;
+            margin: 0;
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -290,7 +341,7 @@
         <div class="login-box">
             <h2 style="text-align: center; margin-bottom: 30px; color: #667eea;">🛡️ SenseGuard Admin</h2>
             <div id="loginAlert"></div>
-            <form id="loginForm">
+            <form id="loginForm" onsubmit="return false;">
                 <div class="form-group">
                     <label for="username">Username</label>
                     <input type="text" id="username" class="form-control" required value="admin">
@@ -299,7 +350,7 @@
                     <label for="password">Password</label>
                     <input type="password" id="password" class="form-control" required value="SenseGuard2025!">
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Login</button>
+                <button type="button" class="btn" style="width: 100%;" onclick="login()">Login</button>
             </form>
             <div style="text-align: center; margin-top: 20px; font-size: 12px; color: #666;">
                 Default: admin / SenseGuard2025!<br>
@@ -373,6 +424,7 @@
             <div class="section" id="api-keys">
                 <h2 class="section-title">API Key Management</h2>
                 <button class="btn" onclick="loadAPIKeys()">Refresh API Keys</button>
+                <button class="btn btn-success" onclick="showCreateAPIKeyModal()">Create New API Key</button>
                 <div id="apiKeysContent" class="loading">Click "Refresh API Keys" to load API key data</div>
             </div>
 
@@ -399,25 +451,174 @@
         </div>
     </div>
 
-    <script>
+    <!-- Create API Key Modal -->
+    <div id="createAPIKeyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeCreateAPIKeyModal()">&times;</span>
+                <h2 class="modal-title">Create New API Key</h2>
+            </div>
+            <form id="createAPIKeyForm">
+                <div class="form-group">
+                    <label for="keyName">Key Name</label>
+                    <input type="text" id="keyName" class="form-control" required placeholder="e.g., Mobile App API Key">
+                </div>
+                <div class="form-group">
+                    <label for="keyDescription">Description</label>
+                    <textarea id="keyDescription" class="form-control" rows="3" placeholder="Brief description of what this API key will be used for"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="rateLimitPerHour">Rate Limit (requests per hour)</label>
+                    <input type="number" id="rateLimitPerHour" class="form-control" value="1000" min="1" max="10000">
+                </div>
+                <div class="form-group">
+                    <label>Permissions</label>
+                    <div style="margin-top: 10px;">
+                        <div style="margin-bottom: 15px;">
+                            <strong>Contracts:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="contractsRead" checked> Read</label>
+                                <label><input type="checkbox" id="contractsCreate"> Create</label>
+                                <label><input type="checkbox" id="contractsUpdate"> Update</label>
+                                <label><input type="checkbox" id="contractsDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>Customers:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="customersRead" checked> Read</label>
+                                <label><input type="checkbox" id="customersCreate"> Create</label>
+                                <label><input type="checkbox" id="customersUpdate"> Update</label>
+                                <label><input type="checkbox" id="customersDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>Controllers:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="controllersRead"> Read</label>
+                                <label><input type="checkbox" id="controllersCreate"> Create</label>
+                                <label><input type="checkbox" id="controllersUpdate"> Update</label>
+                                <label><input type="checkbox" id="controllersDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>Cameras:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="camerasRead"> Read</label>
+                                <label><input type="checkbox" id="camerasCreate"> Create</label>
+                                <label><input type="checkbox" id="camerasUpdate"> Update</label>
+                                <label><input type="checkbox" id="camerasDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>Events:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="eventsRead"> Read</label>
+                                <label><input type="checkbox" id="eventsCreate"> Create</label>
+                                <label><input type="checkbox" id="eventsUpdate"> Update</label>
+                                <label><input type="checkbox" id="eventsDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>RF Monitoring:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="rfMonitoringRead"> Read</label>
+                                <label><input type="checkbox" id="rfMonitoringCreate"> Create</label>
+                                <label><input type="checkbox" id="rfMonitoringUpdate"> Update</label>
+                                <label><input type="checkbox" id="rfMonitoringDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>System Config:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="systemConfigRead"> Read</label>
+                                <label><input type="checkbox" id="systemConfigCreate"> Create</label>
+                                <label><input type="checkbox" id="systemConfigUpdate"> Update</label>
+                                <label><input type="checkbox" id="systemConfigDelete"> Delete</label>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <strong>Logs:</strong>
+                            <div style="margin-left: 20px; margin-top: 5px;">
+                                <label><input type="checkbox" id="logsRead"> Read</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button type="submit" class="btn">Create API Key</button>
+                    <button type="button" class="btn" onclick="closeCreateAPIKeyModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    <!-- API Key Created Modal -->
+    <div id="apiKeyCreatedModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="close" onclick="closeAPIKeyCreatedModal()">&times;</span>
+                <h2 class="modal-title">🎉 API Key Created Successfully!</h2>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <div class="alert alert-success">
+                    <strong>Important:</strong> This is the only time you'll see the full API key. Please copy and save it securely.
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="generatedAPIKey">Your New API Key:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="generatedAPIKey" class="form-control" readonly style="font-family: monospace; background: #f7f9fc;">
+                    <button type="button" class="btn" onclick="copyAPIKey()" id="copyButton">📋 Copy</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>API Key Details:</label>
+                <div id="apiKeyDetails" style="background: #f7f9fc; padding: 15px; border-radius: 6px; font-family: monospace; font-size: 14px;"></div>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <button type="button" class="btn" onclick="closeAPIKeyCreatedModal()">I've Saved the API Key</button>
+            </div>
+        </div>
+    </div>
         // Global variables
         let authToken = localStorage.getItem('authToken');
         let currentUser = null;
-        const API_BASE = '/api/v1';
+        const API_BASE = '/api';  // FIXED: Changed from '/api/v1' to '/api'
 
-        // Initialize the application
+        // Initialize the application - FIXED: Better initialization
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing application...');
+            
+            // Setup event listeners first
+            setupEventListeners();
+            
+            // Then check authentication
             if (authToken) {
+                console.log('Found existing token, validating...');
                 validateToken();
             } else {
+                console.log('No token found, showing login...');
                 showLogin();
             }
-            setupEventListeners();
         });
 
         function setupEventListeners() {
-            // Login form
-            document.getElementById('loginForm').addEventListener('submit', login);
+            // Login form - FIXED: Ensure event listener is properly attached
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
+                    e.preventDefault(); // Prevent default form submission
+                    login(e);
+                });
+            }
+            
+            // Create API Key form
+            const createAPIKeyForm = document.getElementById('createAPIKeyForm');
+            if (createAPIKeyForm) {
+                createAPIKeyForm.addEventListener('submit', function(e) {
+                    e.preventDefault(); // Prevent default form submission
+                    createAPIKey(e);
+                });
+            }
             
             // Navigation
             document.querySelectorAll('.nav-item').forEach(item => {
@@ -429,13 +630,27 @@
             });
         }
 
-        // Authentication functions
+        // Authentication functions - FIXED: Better error handling and logging
         async function login(e) {
-            e.preventDefault();
+            if (e) {
+                e.preventDefault(); // Ensure form submission is prevented
+            }
+            
+            console.log('Login function called');
+            
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            
+            console.log('Attempting login for username:', username);
+
+            if (!username || !password) {
+                showAlert('loginAlert', 'Please enter both username and password.', 'error');
+                return;
+            }
 
             try {
+                console.log('Making login request to:', `${API_BASE}/auth/login`);
+                
                 const response = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: {
@@ -444,9 +659,12 @@
                     body: JSON.stringify({ username, password })
                 });
 
-                const data = await response.json();
-
+                console.log('Login response status:', response.status);
+                
                 if (response.ok) {
+                    const data = await response.json();
+                    console.log('Login successful, received data');
+                    
                     if (data.force_password_change) {
                         showAlert('loginAlert', 'You must change your password before continuing.', 'error');
                         return;
@@ -455,13 +673,18 @@
                     authToken = data.token;
                     currentUser = data.user;
                     localStorage.setItem('authToken', authToken);
+                    
+                    console.log('Token saved, showing dashboard');
                     showDashboard();
                     loadDashboardData();
                 } else {
-                    showAlert('loginAlert', data.error || 'Login failed', 'error');
+                    const errorData = await response.json().catch(() => ({ error: 'Login failed' }));
+                    console.error('Login failed:', errorData);
+                    showAlert('loginAlert', errorData.error || 'Login failed', 'error');
                 }
             } catch (error) {
-                showAlert('loginAlert', 'Network error. Please try again.', 'error');
+                console.error('Login error:', error);
+                showAlert('loginAlert', 'Network error. Please check your connection and try again.', 'error');
             }
         }
 
@@ -484,6 +707,7 @@
                     showLogin();
                 }
             } catch (error) {
+                console.error('Token validation error:', error);
                 localStorage.removeItem('authToken');
                 authToken = null;
                 showLogin();
@@ -565,9 +789,12 @@
                 const response = await apiRequest('/auth/users');
                 if (response.ok) {
                     const users = await response.json();
-                    document.getElementById('totalUsers').textContent = users.length;
+                    // FIXED: Handle null response
+                    const validUsers = users || [];
+                    document.getElementById('totalUsers').textContent = validUsers.length;
                 }
             } catch (error) {
+                console.error('Error loading user count:', error);
                 document.getElementById('totalUsers').textContent = 'Error';
             }
         }
@@ -577,10 +804,13 @@
                 const response = await apiRequest('/auth/api-keys');
                 if (response.ok) {
                     const apiKeys = await response.json();
-                    const activeKeys = apiKeys.filter(key => key.active).length;
+                    // FIXED: Handle null response
+                    const validApiKeys = apiKeys || [];
+                    const activeKeys = validApiKeys.filter(key => key.active).length;
                     document.getElementById('activeAPIKeys').textContent = activeKeys;
                 }
             } catch (error) {
+                console.error('Error loading API key count:', error);
                 document.getElementById('activeAPIKeys').textContent = 'Error';
             }
         }
@@ -590,9 +820,12 @@
                 const response = await apiRequest('/customers');
                 if (response.ok) {
                     const customers = await response.json();
-                    document.getElementById('totalCustomers').textContent = customers.length;
+                    // FIXED: Handle null response
+                    const validCustomers = customers || [];
+                    document.getElementById('totalCustomers').textContent = validCustomers.length;
                 }
             } catch (error) {
+                console.error('Error loading customer count:', error);
                 document.getElementById('totalCustomers').textContent = 'Error';
             }
         }
@@ -602,9 +835,12 @@
                 const response = await apiRequest('/contracts');
                 if (response.ok) {
                     const contracts = await response.json();
-                    document.getElementById('totalContracts').textContent = contracts.length;
+                    // FIXED: Handle null response
+                    const validContracts = contracts || [];
+                    document.getElementById('totalContracts').textContent = validContracts.length;
                 }
             } catch (error) {
+                console.error('Error loading contract count:', error);
                 document.getElementById('totalContracts').textContent = 'Error';
             }
         }
@@ -616,16 +852,23 @@
                 const response = await apiRequest('/auth/users');
                 if (response.ok) {
                     const users = await response.json();
-                    displayUsersTable(users);
+                    // FIXED: Handle null response
+                    displayUsersTable(users || []);
                 } else {
                     document.getElementById('usersContent').innerHTML = '<div class="alert alert-error">Error loading users</div>';
                 }
             } catch (error) {
+                console.error('Error loading users:', error);
                 document.getElementById('usersContent').innerHTML = '<div class="alert alert-error">Network error loading users</div>';
             }
         }
 
         function displayUsersTable(users) {
+            if (users.length === 0) {
+                document.getElementById('usersContent').innerHTML = '<div class="alert alert-info">No users found.</div>';
+                return;
+            }
+
             const tableHtml = `
                 <table class="table">
                     <thead>
@@ -659,16 +902,31 @@
                 const response = await apiRequest('/auth/api-keys');
                 if (response.ok) {
                     const apiKeys = await response.json();
-                    displayAPIKeysTable(apiKeys);
+                    // FIXED: Handle null response
+                    displayAPIKeysTable(apiKeys || []);
                 } else {
                     document.getElementById('apiKeysContent').innerHTML = '<div class="alert alert-error">Error loading API keys</div>';
                 }
             } catch (error) {
+                console.error('Error loading API keys:', error);
                 document.getElementById('apiKeysContent').innerHTML = '<div class="alert alert-error">Network error loading API keys</div>';
             }
         }
 
         function displayAPIKeysTable(apiKeys) {
+            // FIXED: Better handling of empty API keys with create button
+            if (apiKeys.length === 0) {
+                document.getElementById('apiKeysContent').innerHTML = `
+                    <div class="alert alert-info">
+                        <strong>No API keys found.</strong><br>
+                        Create your first API key to enable external system access to the SenseGuard platform.
+                        <br><br>
+                        <button class="btn btn-success" onclick="showCreateAPIKeyModal()">Create First API Key</button>
+                    </div>
+                `;
+                return;
+            }
+            
             const tableHtml = `
                 <table class="table">
                     <thead>
@@ -679,6 +937,7 @@
                             <th>Last Used</th>
                             <th>Usage Count</th>
                             <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -688,8 +947,11 @@
                                 <td><code>${key.key_prefix}...</code></td>
                                 <td>${key.created_by_user ? key.created_by_user.username : 'Unknown'}</td>
                                 <td>${key.last_used ? new Date(key.last_used).toLocaleString() : 'Never'}</td>
-                                <td>${key.usage_count}</td>
+                                <td>${key.usage_count || 0}</td>
                                 <td><span class="status-badge status-${key.active ? 'active' : 'inactive'}">${key.active ? 'Active' : 'Inactive'}</span></td>
+                                <td>
+                                    <button class="btn btn-danger" onclick="deleteAPIKey(${key.api_key_id})" style="padding: 6px 12px; font-size: 12px;">Delete</button>
+                                </td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -704,16 +966,23 @@
                 const response = await apiRequest('/customers');
                 if (response.ok) {
                     const customers = await response.json();
-                    displayCustomersTable(customers);
+                    // FIXED: Handle null response
+                    displayCustomersTable(customers || []);
                 } else {
                     document.getElementById('customersContent').innerHTML = '<div class="alert alert-error">Error loading customers</div>';
                 }
             } catch (error) {
+                console.error('Error loading customers:', error);
                 document.getElementById('customersContent').innerHTML = '<div class="alert alert-error">Network error loading customers</div>';
             }
         }
 
         function displayCustomersTable(customers) {
+            if (customers.length === 0) {
+                document.getElementById('customersContent').innerHTML = '<div class="alert alert-info">No customers found.</div>';
+                return;
+            }
+
             const tableHtml = `
                 <table class="table">
                     <thead>
@@ -747,16 +1016,23 @@
                 const response = await apiRequest('/contracts');
                 if (response.ok) {
                     const contracts = await response.json();
-                    displayContractsTable(contracts);
+                    // FIXED: Handle null response
+                    displayContractsTable(contracts || []);
                 } else {
                     document.getElementById('contractsContent').innerHTML = '<div class="alert alert-error">Error loading contracts</div>';
                 }
             } catch (error) {
+                console.error('Error loading contracts:', error);
                 document.getElementById('contractsContent').innerHTML = '<div class="alert alert-error">Network error loading contracts</div>';
             }
         }
 
         function displayContractsTable(contracts) {
+            if (contracts.length === 0) {
+                document.getElementById('contractsContent').innerHTML = '<div class="alert alert-info">No contracts found.</div>';
+                return;
+            }
+
             const tableHtml = `
                 <table class="table">
                     <thead>
@@ -793,17 +1069,217 @@
                 const statusColor = health.status === 'healthy' ? '#38a169' : '#e53e3e';
                 const healthHtml = `
                     <div style="padding: 20px; border-radius: 8px; background: white; border-left: 4px solid ${statusColor};">
-                        <h3 style="color: ${statusColor};">System Status: ${health.status.toUpperCase()}</h3>
-                        <p><strong>Service:</strong> ${health.service}</p>
-                        <p><strong>Version:</strong> ${health.version}</p>
-                        <p><strong>Database:</strong> ${health.database}</p>
-                        <p><strong>Timestamp:</strong> ${new Date(health.timestamp * 1000).toLocaleString()}</p>
+                        <h3 style="color: ${statusColor};">System Status: ${health.status ? health.status.toUpperCase() : 'UNKNOWN'}</h3>
+                        <p><strong>Service:</strong> ${health.service || 'Unknown'}</p>
+                        ${health.version ? `<p><strong>Version:</strong> ${health.version}</p>` : ''}
+                        ${health.database ? `<p><strong>Database:</strong> ${health.database}</p>` : ''}
+                        <p><strong>Timestamp:</strong> ${health.timestamp ? new Date(health.timestamp * 1000).toLocaleString() : new Date().toLocaleString()}</p>
                         ${health.error ? `<p style="color: #e53e3e;"><strong>Error:</strong> ${health.error}</p>` : ''}
                     </div>
                 `;
                 document.getElementById('healthContent').innerHTML = healthHtml;
             } catch (error) {
+                console.error('Error checking health:', error);
                 document.getElementById('healthContent').innerHTML = '<div class="alert alert-error">Error checking system health</div>';
+            }
+        }
+
+        // API Key Management Functions
+        function showCreateAPIKeyModal() {
+            document.getElementById('createAPIKeyModal').style.display = 'block';
+        }
+
+        function closeCreateAPIKeyModal() {
+            document.getElementById('createAPIKeyModal').style.display = 'none';
+            document.getElementById('createAPIKeyForm').reset();
+        }
+
+        async function createAPIKey(e) {
+            e.preventDefault();
+            
+            const keyName = document.getElementById('keyName').value;
+            const description = document.getElementById('keyDescription').value;
+            const rateLimitPerHour = parseInt(document.getElementById('rateLimitPerHour').value);
+            
+            // Build permissions object based on checkboxes - FIXED: Full CRUD permissions
+            const permissions = {};
+            
+            // Contracts permissions
+            const contractsPerms = [];
+            if (document.getElementById('contractsRead').checked) contractsPerms.push('read');
+            if (document.getElementById('contractsCreate').checked) contractsPerms.push('create');
+            if (document.getElementById('contractsUpdate').checked) contractsPerms.push('update');
+            if (document.getElementById('contractsDelete').checked) contractsPerms.push('delete');
+            if (contractsPerms.length > 0) permissions.contracts = contractsPerms;
+            
+            // Customers permissions
+            const customersPerms = [];
+            if (document.getElementById('customersRead').checked) customersPerms.push('read');
+            if (document.getElementById('customersCreate').checked) customersPerms.push('create');
+            if (document.getElementById('customersUpdate').checked) customersPerms.push('update');
+            if (document.getElementById('customersDelete').checked) customersPerms.push('delete');
+            if (customersPerms.length > 0) permissions.customers = customersPerms;
+            
+            // Controllers permissions
+            const controllersPerms = [];
+            if (document.getElementById('controllersRead').checked) controllersPerms.push('read');
+            if (document.getElementById('controllersCreate').checked) controllersPerms.push('create');
+            if (document.getElementById('controllersUpdate').checked) controllersPerms.push('update');
+            if (document.getElementById('controllersDelete').checked) controllersPerms.push('delete');
+            if (controllersPerms.length > 0) permissions.controllers = controllersPerms;
+            
+            // Cameras permissions
+            const camerasPerms = [];
+            if (document.getElementById('camerasRead').checked) camerasPerms.push('read');
+            if (document.getElementById('camerasCreate').checked) camerasPerms.push('create');
+            if (document.getElementById('camerasUpdate').checked) camerasPerms.push('update');
+            if (document.getElementById('camerasDelete').checked) camerasPerms.push('delete');
+            if (camerasPerms.length > 0) permissions.cameras = camerasPerms;
+            
+            // Events permissions
+            const eventsPerms = [];
+            if (document.getElementById('eventsRead').checked) eventsPerms.push('read');
+            if (document.getElementById('eventsCreate').checked) eventsPerms.push('create');
+            if (document.getElementById('eventsUpdate').checked) eventsPerms.push('update');
+            if (document.getElementById('eventsDelete').checked) eventsPerms.push('delete');
+            if (eventsPerms.length > 0) permissions.events = eventsPerms;
+            
+            // RF Monitoring permissions
+            const rfMonitoringPerms = [];
+            if (document.getElementById('rfMonitoringRead').checked) rfMonitoringPerms.push('read');
+            if (document.getElementById('rfMonitoringCreate').checked) rfMonitoringPerms.push('create');
+            if (document.getElementById('rfMonitoringUpdate').checked) rfMonitoringPerms.push('update');
+            if (document.getElementById('rfMonitoringDelete').checked) rfMonitoringPerms.push('delete');
+            if (rfMonitoringPerms.length > 0) permissions.rf_monitoring = rfMonitoringPerms;
+            
+            // System Config permissions
+            const systemConfigPerms = [];
+            if (document.getElementById('systemConfigRead').checked) systemConfigPerms.push('read');
+            if (document.getElementById('systemConfigCreate').checked) systemConfigPerms.push('create');
+            if (document.getElementById('systemConfigUpdate').checked) systemConfigPerms.push('update');
+            if (document.getElementById('systemConfigDelete').checked) systemConfigPerms.push('delete');
+            if (systemConfigPerms.length > 0) permissions.system_config = systemConfigPerms;
+            
+            // Logs permissions (read-only)
+            if (document.getElementById('logsRead').checked) {
+                permissions.logs = ['read'];
+            }
+
+            try {
+                const response = await apiRequest('/auth/api-keys', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        key_name: keyName,
+                        description: description,
+                        permissions: permissions,
+                        rate_limit_per_hour: rateLimitPerHour
+                    })
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    closeCreateAPIKeyModal();
+                    
+                    // FIXED: Show API key in modal with copy functionality
+                    showAPIKeyCreatedModal(result);
+                    
+                    // Refresh the API keys list
+                    loadAPIKeys();
+                    loadAPIKeyCount(); // Update dashboard counter
+                } else {
+                    const error = await response.json();
+                    alert(`Error creating API key: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error creating API key:', error);
+                alert('Network error creating API key. Please try again.');
+            }
+        }
+
+        // FIXED: Add API Key creation success modal functions
+        function showAPIKeyCreatedModal(result) {
+            const modal = document.getElementById('apiKeyCreatedModal');
+            const apiKeyInput = document.getElementById('generatedAPIKey');
+            const detailsDiv = document.getElementById('apiKeyDetails');
+            
+            // Set the API key value
+            apiKeyInput.value = result.plain_key;
+            
+            // Show API key details
+            const permissions = result.api_key.permissions || {};
+            const permissionsList = Object.entries(permissions)
+                .map(([resource, actions]) => `${resource}: ${actions.join(', ')}`)
+                .join('<br>');
+            
+            detailsDiv.innerHTML = `
+                <strong>Key Name:</strong> ${result.api_key.key_name}<br>
+                <strong>Description:</strong> ${result.api_key.description || 'No description'}<br>
+                <strong>Rate Limit:</strong> ${result.api_key.rate_limit_per_hour} requests/hour<br>
+                <strong>Permissions:</strong><br>${permissionsList || 'No permissions set'}
+            `;
+            
+            modal.style.display = 'block';
+        }
+
+        function closeAPIKeyCreatedModal() {
+            document.getElementById('apiKeyCreatedModal').style.display = 'none';
+            // Clear the API key value for security
+            document.getElementById('generatedAPIKey').value = '';
+            document.getElementById('apiKeyDetails').innerHTML = '';
+        }
+
+        async function copyAPIKey() {
+            const apiKeyInput = document.getElementById('generatedAPIKey');
+            const copyButton = document.getElementById('copyButton');
+            
+            try {
+                await navigator.clipboard.writeText(apiKeyInput.value);
+                
+                // Show success feedback
+                const originalText = copyButton.textContent;
+                copyButton.textContent = '✅ Copied!';
+                copyButton.style.background = '#38a169';
+                
+                setTimeout(() => {
+                    copyButton.textContent = originalText;
+                    copyButton.style.background = '#667eea';
+                }, 2000);
+            } catch (err) {
+                // Fallback for older browsers
+                apiKeyInput.select();
+                apiKeyInput.setSelectionRange(0, 99999);
+                document.execCommand('copy');
+                
+                const originalText = copyButton.textContent;
+                copyButton.textContent = '✅ Copied!';
+                copyButton.style.background = '#38a169';
+                
+                setTimeout(() => {
+                    copyButton.textContent = originalText;
+                    copyButton.style.background = '#667eea';
+                }, 2000);
+            }
+        }
+            if (!confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    alert('API key deleted successfully.');
+                    loadAPIKeys(); // Refresh the list
+                    loadAPIKeyCount(); // Update dashboard counter
+                } else {
+                    const error = await response.json();
+                    alert(`Error deleting API key: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error('Error deleting API key:', error);
+                alert('Network error deleting API key. Please try again.');
             }
         }
 
@@ -824,6 +1300,19 @@
                     ...options.headers
                 }
             });
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const createModal = document.getElementById('createAPIKeyModal');
+            const createdModal = document.getElementById('apiKeyCreatedModal');
+            
+            if (event.target == createModal) {
+                closeCreateAPIKeyModal();
+            }
+            if (event.target == createdModal) {
+                closeAPIKeyCreatedModal();
+            }
         }
     </script>
 </body>
