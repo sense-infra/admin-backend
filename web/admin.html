@@ -1090,6 +1090,16 @@
                                 permissionsDisplay = permissionsList || 'None';
                             }
                             
+                            // Handle creator display - check multiple possible field names
+                            let creatorDisplay = 'Unknown';
+                            if (key.creator && key.creator.username) {
+                                creatorDisplay = key.creator.username;
+                            } else if (key.created_by_user && key.created_by_user.username) {
+                                creatorDisplay = key.created_by_user.username;
+                            } else if (key.Creator && key.Creator.username) {
+                                creatorDisplay = key.Creator.username;
+                            }
+                            
                             return `
                             <tr>
                                 <td>
@@ -1098,7 +1108,7 @@
                                 </td>
                                 <td><code>${key.key_prefix}...</code></td>
                                 <td><small>${permissionsDisplay}</small></td>
-                                <td>${key.creator ? key.creator.username : 'Unknown'}</td>
+                                <td><strong>${creatorDisplay}</strong></td>
                                 <td>${key.last_used ? new Date(key.last_used).toLocaleString() : 'Never'}</td>
                                 <td>${key.usage_count || 0}</td>
                                 <td><span class="status-badge status-${key.active ? 'active' : 'inactive'}">${key.active ? 'Active' : 'Inactive'}</span></td>

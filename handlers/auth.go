@@ -222,9 +222,19 @@ func (ah *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate that permissions are not empty
+	if len(req.Permissions) == 0 {
+		WriteErrorResponse(w, http.StatusBadRequest, "Permissions are required", "At least one permission must be specified")
+		return
+	}
+
 	response, err := ah.authService.CreateAPIKey(&req, *authContext.UserID)
 	if err != nil {
-		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to create API key", err.Error())
+		if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "uk_api_key_name") {
+			WriteErrorResponse(w, http.StatusConflict, "API key name already exists", "Please choose a different name")
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to create API key", err.Error())
+		}
 		return
 	}
 
@@ -277,14 +287,18 @@ func (ah *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	apiKey, err := ah.authService.UpdateAPIKey(apiKeyID, &req)
 	if err != nil {
-		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to update API key", err.Error())
+		if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "uk_api_key_name") {
+			WriteErrorResponse(w, http.StatusConflict, "API key name already exists", "Please choose a different name")
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to update API key", err.Error())
+		}
 		return
 	}
 
 	WriteJSONResponse(w, http.StatusOK, apiKey)
 }
 
-// DeleteAPIKey deactivates an API key (admin only)
+// DeleteAPIKey PERMANENTLY DELETES an API key (admin only) - FIXED!
 func (ah *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	apiKeyID, err := strconv.Atoi(vars["id"])
@@ -293,12 +307,17 @@ func (ah *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := ah.authService.DeactivateAPIKey(apiKeyID); err != nil {
-		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to deactivate API key", err.Error())
+	// Use the new PermanentlyDeleteAPIKey method instead of DeactivateAPIKey
+	if err := ah.authService.PermanentlyDeleteAPIKey(apiKeyID); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			WriteErrorResponse(w, http.StatusNotFound, "API key not found", "")
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to delete API key", err.Error())
+		}
 		return
 	}
 
-	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "API key deactivated successfully"})
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "API key permanently deleted successfully"})
 }
 
 // GetAPIKeyUsage gets usage statistics for an API key (admin only)
@@ -329,8 +348,3 @@ func (ah *AuthHandler) GetRoles(w http.ResponseWriter, r *http.Request) {
 
 	WriteJSONResponse(w, http.StatusOK, roles)
 }
-
-// Helper functions
-
-
-

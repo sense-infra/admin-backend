@@ -72,7 +72,7 @@ CREATE TABLE User_Session (
 -- Purpose: Manage API keys for external access (moved from config to DB)
 CREATE TABLE API_Key (
     api_key_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the API key',
-    key_name VARCHAR(100) NOT NULL COMMENT 'Human-readable name for the API key',
+    key_name VARCHAR(100) NOT NULL UNIQUE COMMENT 'Human-readable name for the API key',
     key_hash VARCHAR(255) NOT NULL UNIQUE COMMENT 'SHA256 hash of the API key',
     key_prefix VARCHAR(20) NOT NULL COMMENT 'First few characters of key for identification',
     

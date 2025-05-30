@@ -11,13 +11,17 @@ import (
 
 // GetAllUsers returns all users with their roles
 func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
-	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions,
+	query := `SELECT u.user_id, u.username, u.email, u.password_hash, u.role_id, 
+		u.first_name, u.last_name, u.force_password_change, u.last_login, 
+		u.failed_login_attempts, u.locked_until, u.password_changed_at, 
+		u.active, u.created_by, u.created_at, u.updated_at,
+		r.name as role_name, r.permissions as role_permissions,
 		creator.username as creator_username
-		FROM System_User u
-		JOIN User_Role r ON u.role_id = r.role_id
+		FROM System_User u 
+		JOIN User_Role r ON u.role_id = r.role_id 
 		LEFT JOIN System_User creator ON u.created_by = creator.user_id
 		ORDER BY u.created_at DESC`
-
+	
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users: %w", err)
@@ -69,7 +73,7 @@ func (a *AuthService) UpdateUser(userID int, req *models.UpdateUserRequest) (*mo
 	// Build dynamic update query
 	setParts := []string{}
 	args := []interface{}{}
-
+	
 	if req.Email != nil {
 		setParts = append(setParts, "email = ?")
 		args = append(args, *req.Email)
@@ -99,9 +103,9 @@ func (a *AuthService) UpdateUser(userID int, req *models.UpdateUserRequest) (*mo
 	setParts = append(setParts, "updated_at = NOW()")
 	args = append(args, userID)
 
-	query := fmt.Sprintf("UPDATE System_User SET %s WHERE user_id = ?",
+	query := fmt.Sprintf("UPDATE System_User SET %s WHERE user_id = ?", 
 		strings.Join(setParts, ", "))
-
+	
 	if _, err := a.db.Exec(query, args...); err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
@@ -125,13 +129,19 @@ func (a *AuthService) DeactivateUser(userID int) error {
 	return nil
 }
 
-// GetAllAPIKeys returns all API keys with creator information
+// GetAllAPIKeys returns all API keys with creator information - COMPLETELY FIXED
 func (a *AuthService) GetAllAPIKeys() ([]*models.APIKey, error) {
-	query := `SELECT ak.*, u.username as creator_username
-		FROM API_Key ak
+	// Explicitly list all columns to ensure proper order and mapping
+	query := `SELECT 
+		ak.api_key_id, ak.key_name, ak.key_hash, ak.key_prefix,
+		ak.permissions, ak.contract_access, ak.rate_limit_per_hour, 
+		ak.created_by, ak.description, ak.active, ak.last_used, 
+		ak.usage_count, ak.expires_at, ak.created_at, ak.updated_at,
+		u.username as creator_username
+		FROM API_Key ak 
 		LEFT JOIN System_User u ON ak.created_by = u.user_id
 		ORDER BY ak.created_at DESC`
-
+	
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API keys: %w", err)
@@ -143,6 +153,7 @@ func (a *AuthService) GetAllAPIKeys() ([]*models.APIKey, error) {
 		var apiKey models.APIKey
 		var creatorUsername *string
 
+		// Scan in the exact same order as the SELECT statement
 		err := rows.Scan(
 			&apiKey.APIKeyID, &apiKey.KeyName, &apiKey.KeyHash, &apiKey.KeyPrefix,
 			&apiKey.Permissions, &apiKey.ContractAccess, &apiKey.RateLimitPerHour,
@@ -154,16 +165,12 @@ func (a *AuthService) GetAllAPIKeys() ([]*models.APIKey, error) {
 			return nil, fmt.Errorf("failed to scan API key: %w", err)
 		}
 
+		// Set the creator information
 		if creatorUsername != nil {
 			apiKey.Creator = &models.SystemUser{Username: *creatorUsername}
 		}
 
 		apiKeys = append(apiKeys, &apiKey)
-	}
-
-	// FIXED: Return empty slice instead of nil when no API keys found
-	if apiKeys == nil {
-		apiKeys = []*models.APIKey{}
 	}
 
 	return apiKeys, nil
@@ -174,7 +181,7 @@ func (a *AuthService) UpdateAPIKey(apiKeyID int, req *models.UpdateAPIKeyRequest
 	// Build dynamic update query
 	setParts := []string{}
 	args := []interface{}{}
-
+	
 	if req.KeyName != nil {
 		setParts = append(setParts, "key_name = ?")
 		args = append(args, *req.KeyName)
@@ -212,9 +219,9 @@ func (a *AuthService) UpdateAPIKey(apiKeyID int, req *models.UpdateAPIKeyRequest
 	setParts = append(setParts, "updated_at = NOW()")
 	args = append(args, apiKeyID)
 
-	query := fmt.Sprintf("UPDATE API_Key SET %s WHERE api_key_id = ?",
+	query := fmt.Sprintf("UPDATE API_Key SET %s WHERE api_key_id = ?", 
 		strings.Join(setParts, ", "))
-
+	
 	if _, err := a.db.Exec(query, args...); err != nil {
 		return nil, fmt.Errorf("failed to update API key: %w", err)
 	}
@@ -222,7 +229,7 @@ func (a *AuthService) UpdateAPIKey(apiKeyID int, req *models.UpdateAPIKeyRequest
 	return a.getAPIKeyByID(apiKeyID)
 }
 
-// DeactivateAPIKey sets an API key as inactive (soft delete)
+// DeactivateAPIKey sets an API key as inactive (keeps the old method for compatibility)
 func (a *AuthService) DeactivateAPIKey(apiKeyID int) error {
 	query := `UPDATE API_Key SET active = FALSE, updated_at = NOW() WHERE api_key_id = ?`
 	if _, err := a.db.Exec(query, apiKeyID); err != nil {
@@ -231,29 +238,28 @@ func (a *AuthService) DeactivateAPIKey(apiKeyID int) error {
 	return nil
 }
 
-// ADDED: DeleteAPIKey actually deletes the API key from database (hard delete)
-func (a *AuthService) DeleteAPIKey(apiKeyID int) error {
-	// First delete any usage logs for this API key
-	usageLogQuery := `DELETE FROM API_Key_Usage_Log WHERE api_key_id = ?`
-	if _, err := a.db.Exec(usageLogQuery, apiKeyID); err != nil {
+// PermanentlyDeleteAPIKey actually deletes the API key record from the database
+func (a *AuthService) PermanentlyDeleteAPIKey(apiKeyID int) error {
+	// First delete usage logs (to maintain referential integrity)
+	usageQuery := `DELETE FROM API_Key_Usage_Log WHERE api_key_id = ?`
+	if _, err := a.db.Exec(usageQuery, apiKeyID); err != nil {
 		return fmt.Errorf("failed to delete API key usage logs: %w", err)
 	}
 
-	// Then delete the API key itself
+	// Then delete the API key
 	query := `DELETE FROM API_Key WHERE api_key_id = ?`
 	result, err := a.db.Exec(query, apiKeyID)
 	if err != nil {
 		return fmt.Errorf("failed to delete API key: %w", err)
 	}
 
-	// Check if any rows were affected
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to check deletion result: %w", err)
+		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("API key with ID %d not found", apiKeyID)
+		return fmt.Errorf("API key not found or already deleted")
 	}
 
 	return nil
@@ -269,7 +275,7 @@ func (a *AuthService) GetAPIKeyUsage(apiKeyID int) (*APIKeyUsageStats, error) {
 
 	// Get usage statistics
 	statsQuery := `
-		SELECT
+		SELECT 
 			COUNT(*) as total_requests,
 			COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as successful_requests,
 			COUNT(CASE WHEN response_status >= 400 THEN 1 END) as error_requests,
@@ -277,9 +283,9 @@ func (a *AuthService) GetAPIKeyUsage(apiKeyID int) (*APIKeyUsageStats, error) {
 			MAX(created_at) as last_request,
 			COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as requests_last_24h,
 			COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as requests_last_7d
-		FROM API_Key_Usage_Log
+		FROM API_Key_Usage_Log 
 		WHERE api_key_id = ?`
-
+	
 	var stats APIKeyUsageStats
 	err = a.db.QueryRow(statsQuery, apiKeyID).Scan(
 		&stats.TotalRequests, &stats.SuccessfulRequests, &stats.ErrorRequests,
@@ -297,7 +303,7 @@ func (a *AuthService) GetAPIKeyUsage(apiKeyID int) (*APIKeyUsageStats, error) {
 // GetAllRoles returns all available roles
 func (a *AuthService) GetAllRoles() ([]*models.UserRole, error) {
 	query := `SELECT * FROM User_Role WHERE active = TRUE ORDER BY name`
-
+	
 	var roles []*models.UserRole
 	err := a.db.Select(&roles, query)
 	if err != nil {
