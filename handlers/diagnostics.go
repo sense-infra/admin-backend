@@ -1,115 +1,92 @@
 package handlers
 
 import (
-    "context"
-    "database/sql"
-    "net/http"
-    "time"
+	"net/http"
+	"runtime"
+	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
-// DatabaseDiagnostics provides detailed database diagnostics
-func (h *Handler) DatabaseDiagnostics(w http.ResponseWriter, r *http.Request) {
-    ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-    defer cancel()
-    
-    diag := map[string]interface{}{
-        "timestamp": time.Now().Format(time.RFC3339),
-    }
-    
-    // 1. Basic connectivity test
-    pingStart := time.Now()
-    if err := h.db.PingContext(ctx); err != nil {
-        diag["ping"] = map[string]interface{}{
-            "status": "failed",
-            "error": err.Error(),
-            "latency_ms": time.Since(pingStart).Milliseconds(),
-        }
-    } else {
-        diag["ping"] = map[string]interface{}{
-            "status": "ok",
-            "latency_ms": time.Since(pingStart).Milliseconds(),
-        }
-    }
-    
-    // 2. Simple query test
-    queryStart := time.Now()
-    var result int
-    err := h.db.QueryRowContext(ctx, "SELECT 1").Scan(&result)
-    if err != nil {
-        diag["simple_query"] = map[string]interface{}{
-            "status": "failed",
-            "error": err.Error(),
-            "latency_ms": time.Since(queryStart).Milliseconds(),
-        }
-    } else {
-        diag["simple_query"] = map[string]interface{}{
-            "status": "ok",
-            "result": result,
-            "latency_ms": time.Since(queryStart).Milliseconds(),
-        }
-    }
-    
-    // 3. Customer count
-    countStart := time.Now()
-    var customerCount int
-    err = h.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM Customer").Scan(&customerCount)
-    if err != nil {
-        diag["customer_count"] = map[string]interface{}{
-            "status": "failed",
-            "error": err.Error(),
-            "latency_ms": time.Since(countStart).Milliseconds(),
-        }
-    } else {
-        diag["customer_count"] = map[string]interface{}{
-            "status": "ok",
-            "count": customerCount,
-            "latency_ms": time.Since(countStart).Milliseconds(),
-        }
-    }
-    
-    // 4. Connection pool stats
-    stats := h.db.Stats()
-    diag["connection_pool"] = map[string]interface{}{
-        "open_connections": stats.OpenConnections,
-        "in_use": stats.InUse,
-        "idle": stats.Idle,
-        "wait_count": stats.WaitCount,
-        "wait_duration_ms": stats.WaitDuration.Milliseconds(),
-        "max_idle_closed": stats.MaxIdleClosed,
-        "max_lifetime_closed": stats.MaxLifetimeClosed,
-    }
-    
-    // 5. Database variables
-    vars := make(map[string]string)
-    rows, err := h.db.QueryContext(ctx, "SHOW VARIABLES LIKE 'max_connections'")
-    if err == nil {
-        defer rows.Close()
-        for rows.Next() {
-            var name, value string
-            if err := rows.Scan(&name, &value); err == nil {
-                vars[name] = value
-            }
-        }
-    }
-    diag["database_variables"] = vars
-    
-    // 6. Test transaction isolation
-    tx, err := h.db.BeginTx(ctx, &sql.TxOptions{
-        Isolation: sql.LevelReadCommitted,
-        ReadOnly:  true,
-    })
-    if err != nil {
-        diag["transaction_test"] = map[string]interface{}{
-            "status": "failed",
-            "error": err.Error(),
-        }
-    } else {
-        tx.Rollback()
-        diag["transaction_test"] = map[string]interface{}{
-            "status": "ok",
-            "isolation_level": "READ_COMMITTED",
-        }
-    }
-    
-    respondJSON(w, http.StatusOK, diag)
+// DiagnosticsHandler handles diagnostic requests
+type DiagnosticsHandler struct {
+	*BaseHandler
+}
+
+func NewDiagnosticsHandler(database *sqlx.DB) *DiagnosticsHandler {
+	return &DiagnosticsHandler{
+		BaseHandler: NewBaseHandler(database),
+	}
+}
+
+// GetDatabaseStatus returns the current database connection status
+func (dh *DiagnosticsHandler) GetDatabaseStatus(w http.ResponseWriter, r *http.Request) {
+	status := map[string]interface{}{
+		"timestamp": time.Now().Unix(),
+		"database":  "MariaDB",
+	}
+
+	// Test database connection
+	if err := dh.db.Ping(); err != nil {
+		status["status"] = "disconnected"
+		status["error"] = err.Error()
+		WriteErrorResponse(w, http.StatusServiceUnavailable, "Database unavailable", err.Error())
+		return
+	}
+
+	// Get database stats
+	stats := dh.db.Stats()
+	status["status"] = "connected"
+	status["stats"] = map[string]interface{}{
+		"open_connections":     stats.OpenConnections,
+		"in_use":              stats.InUse,
+		"idle":                stats.Idle,
+		"wait_count":          stats.WaitCount,
+		"wait_duration":       stats.WaitDuration.String(),
+		"max_idle_closed":     stats.MaxIdleClosed,
+		"max_idle_time_closed": stats.MaxIdleTimeClosed,
+		"max_lifetime_closed": stats.MaxLifetimeClosed,
+	}
+
+	// Test a simple query
+	var result int
+	err := dh.db.Get(&result, "SELECT 1")
+	if err != nil {
+		status["query_test"] = "failed"
+		status["query_error"] = err.Error()
+	} else {
+		status["query_test"] = "success"
+	}
+
+	WriteJSONResponse(w, http.StatusOK, status)
+}
+
+// GetSystemInfo returns system information
+func (dh *DiagnosticsHandler) GetSystemInfo(w http.ResponseWriter, r *http.Request) {
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
+
+	info := map[string]interface{}{
+		"timestamp": time.Now().Unix(),
+		"system": map[string]interface{}{
+			"go_version":      runtime.Version(),
+			"num_goroutines":  runtime.NumGoroutine(),
+			"num_cpu":         runtime.NumCPU(),
+			"os":              runtime.GOOS,
+			"arch":            runtime.GOARCH,
+		},
+		"memory": map[string]interface{}{
+			"alloc":         memStats.Alloc,
+			"total_alloc":   memStats.TotalAlloc,
+			"sys":           memStats.Sys,
+			"num_gc":        memStats.NumGC,
+			"gc_cpu_percent": memStats.GCCPUFraction,
+		},
+		"database": map[string]interface{}{
+			"driver": "mysql",
+			"stats":  dh.db.Stats(),
+		},
+	}
+
+	WriteJSONResponse(w, http.StatusOK, info)
 }

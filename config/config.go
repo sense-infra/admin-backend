@@ -1,115 +1,108 @@
 package config
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
 	"os"
-	"strings"
+	"strconv"
 )
 
-// Config holds all configuration for the application
 type Config struct {
-	Server   ServerConfig   `json:"server"`
-	Database DatabaseConfig `json:"database"`
-	Auth     AuthConfig     `json:"auth"`
+	Server   ServerConfig
+	Database DatabaseConfig
+	JWT      JWTConfig
+	Security SecurityConfig
 }
 
-// ServerConfig holds server-specific configuration
 type ServerConfig struct {
-	Port string `json:"port"`
+	Port        string
+	Environment string
 }
 
-// DatabaseConfig holds database connection configuration
 type DatabaseConfig struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Database string `json:"database"`
-	SSLMode  string `json:"sslmode"`
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Name     string
+	SSLMode  string
 }
 
-// AuthConfig holds authentication configuration
-type AuthConfig struct {
-	APIKeys []string `json:"api_keys"`
+type JWTConfig struct {
+	Secret string
 }
 
-// Load loads configuration from environment variables or config file
+type SecurityConfig struct {
+	SessionTimeout     int  // in hours
+	MaxFailedLogins    int
+	AccountLockTime    int  // in minutes
+	RequireHTTPS       bool
+	CSRFProtection     bool
+	RateLimitEnabled   bool
+	RateLimitRequests  int  // requests per minute
+}
+
 func Load() *Config {
-	cfg := &Config{
+	return &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", ":8080"),
+			Port:        getEnv("SERVER_PORT", "8080"),
+			Environment: getEnv("ENVIRONMENT", "development"),
 		},
 		Database: DatabaseConfig{
-			Host:     getEnv("DB_HOST", "localhost"),
-			Port:     getEnvAsInt("DB_PORT", 3306),
-			User:     getEnv("DB_USER", "sense_user"),
-			Password: getEnv("DB_PASSWORD", ""),
-			Database: getEnv("DB_NAME", "sense_security"),
-			SSLMode:  getEnv("DB_SSLMODE", "preferred"),
+			Host:     getEnv("DB_HOST", "dev-mariadb-ms.dev"),
+			Port:     getEnv("DB_PORT", "3306"),
+			User:     getEnv("DB_USER", "admin"),
+			Password: getEnv("DB_PASSWORD", "changeme"),
+			Name:     getEnv("DB_NAME", "dev"),
+			SSLMode:  getEnv("DB_SSLMODE", "false"),
 		},
-		Auth: AuthConfig{
-			APIKeys: getAPIKeys(),
+		JWT: JWTConfig{
+			Secret: getEnv("JWT_SECRET", generateDefaultJWTSecret()),
+		},
+		Security: SecurityConfig{
+			SessionTimeout:     getEnvAsInt("SESSION_TIMEOUT_HOURS", 24),
+			MaxFailedLogins:    getEnvAsInt("MAX_FAILED_LOGINS", 5),
+			AccountLockTime:    getEnvAsInt("ACCOUNT_LOCK_TIME_MINUTES", 30),
+			RequireHTTPS:       getEnvAsBool("REQUIRE_HTTPS", false),
+			CSRFProtection:     getEnvAsBool("CSRF_PROTECTION", true),
+			RateLimitEnabled:   getEnvAsBool("RATE_LIMIT_ENABLED", true),
+			RateLimitRequests:  getEnvAsInt("RATE_LIMIT_REQUESTS_PER_MINUTE", 60),
 		},
 	}
-
-	// Try to load from config file if exists
-	if configFile := os.Getenv("CONFIG_FILE"); configFile != "" {
-		if err := loadFromFile(configFile, cfg); err != nil {
-			log.Printf("Warning: Failed to load config file %s: %v", configFile, err)
-		}
-	}
-
-	return cfg
-}
-
-// DSN returns the database connection string
-func (d DatabaseConfig) DSN() string {
-	return fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true&loc=Local&tls=%s",
-		d.User, d.Password, d.Host, d.Port, d.Database, d.SSLMode)
 }
 
 func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
+	if value, exists := os.LookupEnv(key); exists {
 		return value
 	}
 	return defaultValue
 }
 
 func getEnvAsInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		var intValue int
-		if _, err := fmt.Sscanf(value, "%d", &intValue); err == nil {
-			return intValue
-		}
+	valueStr := getEnv(key, "")
+	if value, err := strconv.Atoi(valueStr); err == nil {
+		return value
 	}
 	return defaultValue
 }
 
-func getAPIKeys() []string {
-	// API keys can be provided as comma-separated list in env var
-	if keys := os.Getenv("API_KEYS"); keys != "" {
-		return strings.Split(keys, ",")
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := getEnv(key, "")
+	if value, err := strconv.ParseBool(valueStr); err == nil {
+		return value
 	}
-	
-	// Or load from a file
-	if keyFile := os.Getenv("API_KEY_FILE"); keyFile != "" {
-		data, err := os.ReadFile(keyFile)
-		if err != nil {
-			log.Printf("Warning: Failed to read API key file: %v", err)
-			return []string{}
-		}
-		return strings.Split(strings.TrimSpace(string(data)), "\n")
-	}
-	
-	return []string{}
+	return defaultValue
 }
 
-func loadFromFile(filename string, cfg *Config) error {
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return err
+func generateDefaultJWTSecret() string {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		log.Println("WARNING: Using default JWT secret. Set JWT_SECRET environment variable for production!")
+		return "senseguard_default_jwt_secret_change_in_production"
 	}
-	return json.Unmarshal(data, cfg)
+	return secret
+}
+
+// GetDSN returns the database connection string
+func (d *DatabaseConfig) GetDSN() string {
+	return d.User + ":" + d.Password + "@tcp(" + d.Host + ":" + d.Port + ")/" + d.Name + "?parseTime=true"
 }

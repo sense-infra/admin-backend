@@ -1,61 +1,72 @@
 package handlers
 
 import (
-    "net/http"
-    "time"
+	"net/http"
+	"time"
+
+	"github.com/jmoiron/sqlx"
 )
 
-// HealthCheckDetailed returns detailed health status
-func (h *Handler) HealthCheckDetailed(w http.ResponseWriter, r *http.Request) {
-    status := map[string]interface{}{
-        "service": "sense-security-api",
-        "status": "ok",
-        "timestamp": time.Now().Format(time.RFC3339),
-    }
-    
-    // Check database
-    dbStart := time.Now()
-    if err := h.db.Ping(); err != nil {
-        status["status"] = "degraded"
-        status["database"] = map[string]interface{}{
-            "status": "error",
-            "error": err.Error(),
-            "latency_ms": time.Since(dbStart).Milliseconds(),
-        }
-    } else {
-        // Try a simple query
-        var result int
-        err := h.db.QueryRow("SELECT 1").Scan(&result)
-        if err != nil {
-            status["status"] = "degraded"
-            status["database"] = map[string]interface{}{
-                "status": "error",
-                "error": err.Error(),
-                "latency_ms": time.Since(dbStart).Milliseconds(),
-            }
-        } else {
-            status["database"] = map[string]interface{}{
-                "status": "healthy",
-                "latency_ms": time.Since(dbStart).Milliseconds(),
-            }
-        }
-    }
-    
-    // Get connection pool stats
-    dbStats := h.db.Stats()
-    status["connection_pool"] = map[string]interface{}{
-        "open_connections": dbStats.OpenConnections,
-        "in_use": dbStats.InUse,
-        "idle": dbStats.Idle,
-        "wait_count": dbStats.WaitCount,
-        "wait_duration_ms": dbStats.WaitDuration.Milliseconds(),
-        "max_idle_closed": dbStats.MaxIdleClosed,
-        "max_lifetime_closed": dbStats.MaxLifetimeClosed,
-    }
-    
-    if status["status"] == "ok" {
-        respondJSON(w, http.StatusOK, status)
-    } else {
-        respondJSON(w, http.StatusServiceUnavailable, status)
-    }
+// ImprovedHealthHandler provides enhanced health checking
+type ImprovedHealthHandler struct {
+	*BaseHandler
+}
+
+func NewImprovedHealthHandler(database *sqlx.DB) *ImprovedHealthHandler {
+	return &ImprovedHealthHandler{
+		BaseHandler: NewBaseHandler(database),
+	}
+}
+
+// GetDetailedHealth returns detailed health information
+func (h *ImprovedHealthHandler) GetDetailedHealth(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+	
+	health := map[string]interface{}{
+		"service":   "SenseGuard Security Platform",
+		"version":   "1.0.0",
+		"timestamp": startTime.Unix(),
+		"uptime":    time.Since(startTime).String(),
+	}
+
+	// Database health check
+	if err := h.db.Ping(); err != nil {
+		health["status"] = "unhealthy"
+		health["database"] = map[string]interface{}{
+			"status": "disconnected",
+			"error":  err.Error(),
+		}
+		WriteErrorResponse(w, http.StatusServiceUnavailable, "Service unhealthy", "Database connection failed")
+		return
+	}
+
+	// Database query test
+	var result int
+	queryStart := time.Now()
+	err := h.db.Get(&result, "SELECT 1")
+	queryDuration := time.Since(queryStart)
+	
+	if err != nil {
+		health["status"] = "degraded"
+		health["database"] = map[string]interface{}{
+			"status":        "connected",
+			"query_test":    "failed",
+			"query_error":   err.Error(),
+			"response_time": queryDuration.Milliseconds(),
+		}
+	} else {
+		health["status"] = "healthy"
+		health["database"] = map[string]interface{}{
+			"status":        "healthy",
+			"query_test":    "passed",
+			"response_time": queryDuration.Milliseconds(),
+		}
+	}
+
+	// Add system info
+	health["checks"] = map[string]interface{}{
+		"database": health["database"],
+	}
+
+	WriteJSONResponse(w, http.StatusOK, health)
 }

@@ -1,479 +1,235 @@
 package handlers
 
 import (
-	"context"
-	"database/sql"
-	"fmt"
-	"log"
+	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/jmoiron/sqlx"
 	"github.com/sense-security/api/models"
 )
 
-// ListCustomers returns a list of all customers with extensive debugging
-func (h *Handler) ListCustomers(w http.ResponseWriter, r *http.Request) {
-	limit, offset := getPaginationParams(r)
-	
-	log.Printf("ListCustomers called with limit=%d, offset=%d", limit, offset)
-	
-	// Create a context with timeout for the entire operation
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second) // Increased timeout
-	defer cancel()
-	
-	// Add connection check with context
-	pingStart := time.Now()
-	if err := h.db.PingContext(ctx); err != nil {
-		log.Printf("Database ping failed after %v: %v", time.Since(pingStart), err)
-		respondError(w, http.StatusServiceUnavailable, "Database connection error")
-		return
-	}
-	log.Printf("Database ping successful (took %v)", time.Since(pingStart))
-	
-	// First, let's count total customers for debugging
-	var totalCount int
-	countStart := time.Now()
-	countQuery := `SELECT COUNT(*) FROM Customer`
-	err := h.db.QueryRowContext(ctx, countQuery).Scan(&totalCount)
-	if err != nil {
-		log.Printf("Failed to count customers after %v: %v", time.Since(countStart), err)
-	} else {
-		log.Printf("Total customers in database: %d (took %v)", totalCount, time.Since(countStart))
-	}
-	
-	// Main query with explicit column selection
-	query := `
-		SELECT customer_id, name_on_contract, address, unique_id, 
-		       COALESCE(email, '') as email, 
-		       COALESCE(phone_number, '') as phone_number, 
-		       created_at, updated_at
-		FROM Customer
-		ORDER BY customer_id DESC
-		LIMIT ? OFFSET ?
-	`
-	
-	log.Printf("Executing query with LIMIT=%d OFFSET=%d", limit, offset)
-	startTime := time.Now()
-	
-	// Use QueryContext with our timeout context
-	rows, err := h.db.QueryContext(ctx, query, limit, offset)
-	queryDuration := time.Since(startTime)
-	
-	if err != nil {
-		log.Printf("Query failed after %v: %v", queryDuration, err)
-		log.Printf("Context error: %v", ctx.Err())
-		respondError(w, http.StatusInternalServerError, "Failed to fetch customers")
-		return
-	}
-	
-	// IMPORTANT: Ensure rows are closed even on panic
-	defer func() {
-		closeStart := time.Now()
-		if err := rows.Close(); err != nil {
-			log.Printf("Error closing rows after %v: %v", time.Since(closeStart), err)
-		} else {
-			log.Printf("Rows closed successfully after %v", time.Since(closeStart))
-		}
-	}()
-	
-	log.Printf("Query executed successfully (took %v)", queryDuration)
-	
-	// Check if rows is nil
-	if rows == nil {
-		log.Printf("ERROR: rows is nil after successful query!")
-		respondError(w, http.StatusInternalServerError, "Query returned nil rows")
-		return
-	}
-	
-	// Initialize customers slice
-	customers := make([]models.Customer, 0, limit)
-	count := 0
-	
-	// Check columns for debugging
-	columns, err := rows.Columns()
-	if err != nil {
-		log.Printf("Failed to get columns: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to get result columns")
-		return
-	}
-	log.Printf("Query returned %d columns: %v", len(columns), columns)
-	
-	// Check context before starting iteration
-	if ctx.Err() != nil {
-		log.Printf("Context cancelled before row iteration: %v", ctx.Err())
-		respondError(w, http.StatusRequestTimeout, "Request cancelled")
-		return
-	}
-	
-	// Track iteration timing
-	iterationStart := time.Now()
-	var firstRowTime time.Duration
-	hasRows := false
-	
-	log.Printf("Starting row iteration...")
-	
-	for {
-		// Check context on each iteration
-		if ctx.Err() != nil {
-			log.Printf("Context cancelled during iteration after %d rows: %v", count, ctx.Err())
-			break
-		}
-		
-		// Call Next() and log the result
-		nextStart := time.Now()
-		hasNext := rows.Next()
-		nextDuration := time.Since(nextStart)
-		
-		if !hasNext {
-			log.Printf("rows.Next() returned false after %d rows (took %v)", count, nextDuration)
-			break
-		}
-		
-		hasRows = true
-		if count == 0 {
-			firstRowTime = time.Since(iterationStart)
-			log.Printf("First row available after %v", firstRowTime)
-		}
-		
-		// Create variables for scanning
-		var c models.Customer
-		var email, phone sql.NullString
-		
-		scanStart := time.Now()
-		err := rows.Scan(
-			&c.CustomerID, 
-			&c.NameOnContract, 
-			&c.Address, 
-			&c.UniqueID,
-			&email,
-			&phone,
-			&c.CreatedAt, 
-			&c.UpdatedAt,
-		)
-		scanDuration := time.Since(scanStart)
-		
-		if err != nil {
-			log.Printf("Scan error on row %d after %v: %v", count+1, scanDuration, err)
-			log.Printf("Context state: %v", ctx.Err())
-			
-			// Try to get the actual error
-			if rows.Err() != nil {
-				log.Printf("Rows error: %v", rows.Err())
-			}
-			
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to read customer data: %v", err))
-			return
-		}
-		
-		// Handle nullable fields
-		if email.Valid {
-			c.Email = &email.String
-		}
-		if phone.Valid {
-			c.PhoneNumber = &phone.String
-		}
-		
-		customers = append(customers, c)
-		count++
-		
-		// Log first customer for debugging
-		if count == 1 {
-			log.Printf("First customer scanned: ID=%d, Name=%s (scan took %v)", 
-				c.CustomerID, c.NameOnContract, scanDuration)
-		}
-		
-		// Log every 10th row for large result sets
-		if count%10 == 0 {
-			log.Printf("Scanned %d rows so far...", count)
-		}
-	}
-	
-	iterationDuration := time.Since(iterationStart)
-	log.Printf("Row iteration completed: hasRows=%v, count=%d, duration=%v", hasRows, count, iterationDuration)
-	
-	// Check for errors from iterating over rows
-	if err = rows.Err(); err != nil {
-		log.Printf("rows.Err() after iteration: %v", err)
-		log.Printf("Successfully read %d rows before error", count)
-		
-		// Still return what we got if we have some data
-		if count > 0 {
-			log.Printf("Returning partial results: %d customers", count)
-		} else {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("Error reading results: %v", err))
-			return
-		}
-	}
-	
-	// Final check
-	if !hasRows && totalCount > 0 {
-		log.Printf("WARNING: No rows returned but COUNT shows %d customers!", totalCount)
-		log.Printf("This suggests rows.Next() failed immediately")
-		log.Printf("Possible causes: network timeout, result set issue, or connection problem")
-	}
-	
-	log.Printf("Successfully fetched %d customers (total in DB: %d)", count, totalCount)
-	log.Printf("Total request processing time: %v", time.Since(startTime))
-	
-	// Add diagnostic headers
-	w.Header().Set("X-Total-Count", strconv.Itoa(totalCount))
-	w.Header().Set("X-Returned-Count", strconv.Itoa(count))
-	w.Header().Set("X-Query-Time-Ms", strconv.FormatInt(queryDuration.Milliseconds(), 10))
-	w.Header().Set("X-Iteration-Time-Ms", strconv.FormatInt(iterationDuration.Milliseconds(), 10))
-	if hasRows && firstRowTime > 0 {
-		w.Header().Set("X-First-Row-Time-Ms", strconv.FormatInt(firstRowTime.Milliseconds(), 10))
-	}
-	
-	respondJSON(w, http.StatusOK, customers)
+// CustomerHandler handles customer-related requests
+type CustomerHandler struct {
+	*BaseHandler
 }
 
-// Alternative implementation using a different approach
-func (h *Handler) ListCustomersBuffered(w http.ResponseWriter, r *http.Request) {
-	limit, offset := getPaginationParams(r)
-	
-	log.Printf("ListCustomersBuffered called with limit=%d, offset=%d", limit, offset)
-	
-	// Try a simpler approach - load all data at once
-	query := `
-		SELECT customer_id, name_on_contract, address, unique_id, 
-		       email, phone_number, created_at, updated_at
-		FROM Customer
-		ORDER BY customer_id DESC
-		LIMIT ? OFFSET ?
-	`
-	
-	// Create a longer timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	
-	rows, err := h.db.QueryContext(ctx, query, limit, offset)
-	if err != nil {
-		log.Printf("Query error: %v", err)
-		respondError(w, http.StatusInternalServerError, "Query failed")
-		return
+func NewCustomerHandler(database *sqlx.DB) *CustomerHandler {
+	return &CustomerHandler{
+		BaseHandler: NewBaseHandler(database),
 	}
-	defer rows.Close()
-	
-	// Try to read all rows at once
-	customers := []models.Customer{}
-	for rows.Next() {
-		var c models.Customer
-		err := rows.Scan(
-			&c.CustomerID, &c.NameOnContract, &c.Address, &c.UniqueID,
-			&c.Email, &c.PhoneNumber, &c.CreatedAt, &c.UpdatedAt,
-		)
-		if err != nil {
-			log.Printf("Scan error: %v", err)
-			continue
-		}
-		customers = append(customers, c)
-	}
-	
-	if err := rows.Err(); err != nil {
-		log.Printf("Rows error: %v", err)
-	}
-	
-	log.Printf("Buffered approach returned %d customers", len(customers))
-	respondJSON(w, http.StatusOK, customers)
 }
 
-// GetCustomer returns a single customer by ID
-func (h *Handler) GetCustomer(w http.ResponseWriter, r *http.Request) {
+// GetCustomers returns a list of all customers
+func (ch *CustomerHandler) GetCustomers(w http.ResponseWriter, r *http.Request) {
+	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+		created_at, updated_at FROM Customer ORDER BY created_at DESC`
+	
+	var customers []models.Customer
+	err := ch.db.Select(&customers, query)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve customers", err.Error())
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, customers)
+}
+
+// GetCustomer returns a specific customer by ID
+func (ch *CustomerHandler) GetCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	customerID, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid customer ID")
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid customer ID", "Customer ID must be a number")
 		return
 	}
+
+	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+		created_at, updated_at FROM Customer WHERE customer_id = ?`
 	
-	log.Printf("GetCustomer called for ID: %d", id)
-	
-	var c models.Customer
-	query := `
-		SELECT customer_id, name_on_contract, address, unique_id, 
-		       email, phone_number, created_at, updated_at
-		FROM Customer
-		WHERE customer_id = ?
-	`
-	
-	err = h.db.QueryRow(query, id).Scan(
-		&c.CustomerID, &c.NameOnContract, &c.Address, &c.UniqueID,
-		&c.Email, &c.PhoneNumber, &c.CreatedAt, &c.UpdatedAt,
-	)
-	
-	if err == sql.ErrNoRows {
-		respondError(w, http.StatusNotFound, "Customer not found")
-		return
-	}
+	var customer models.Customer
+	err = ch.db.Get(&customer, query, customerID)
 	if err != nil {
-		log.Printf("Failed to fetch customer %d: %v", id, err)
-		respondError(w, http.StatusInternalServerError, "Failed to fetch customer")
+		WriteErrorResponse(w, http.StatusNotFound, "Customer not found", "")
 		return
 	}
-	
-	respondJSON(w, http.StatusOK, c)
+
+	WriteJSONResponse(w, http.StatusOK, customer)
 }
 
 // CreateCustomer creates a new customer
-func (h *Handler) CreateCustomer(w http.ResponseWriter, r *http.Request) {
-	var c models.Customer
-	if err := parseJSON(r, &c); err != nil {
-		log.Printf("Failed to parse customer JSON: %v", err)
-		respondError(w, http.StatusBadRequest, "Invalid request body")
+func (ch *CustomerHandler) CreateCustomer(w http.ResponseWriter, r *http.Request) {
+	var req models.CreateCustomerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
 		return
 	}
-	
-	if c.NameOnContract == "" || c.Address == "" || c.UniqueID == "" {
-		respondError(w, http.StatusBadRequest, "Missing required fields")
+
+	// Validate required fields
+	if req.NameOnContract == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, "Missing required field", "name_on_contract is required")
 		return
 	}
+
+	if req.Address == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, "Missing required field", "address is required")
+		return
+	}
+
+	if req.UniqueID == "" {
+		WriteErrorResponse(w, http.StatusBadRequest, "Missing required field", "unique_id is required")
+		return
+	}
+
+	// Insert customer
+	query := `INSERT INTO Customer (name_on_contract, address, unique_id, email, phone_number) 
+		VALUES (?, ?, ?, ?, ?)`
 	
-	log.Printf("Creating customer with unique_id: %s", c.UniqueID)
-	
-	query := `
-		INSERT INTO Customer (name_on_contract, address, unique_id, email, phone_number)
-		VALUES (?, ?, ?, ?, ?)
-	`
-	
-	result, err := h.db.Exec(query, c.NameOnContract, c.Address, c.UniqueID, c.Email, c.PhoneNumber)
+	result, err := ch.db.Exec(query, req.NameOnContract, req.Address, 
+		req.UniqueID, req.Email, req.PhoneNumber)
 	if err != nil {
-		log.Printf("Failed to create customer: %v", err)
-		if strings.Contains(err.Error(), "Duplicate entry") {
-			respondError(w, http.StatusConflict, "Customer with this unique_id already exists")
-			return
+		if IsUniqueConstraintError(err) {
+			WriteErrorResponse(w, http.StatusConflict, "Customer already exists", "unique_id must be unique")
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to create customer", err.Error())
 		}
-		respondError(w, http.StatusInternalServerError, "Failed to create customer")
 		return
 	}
-	
-	id, err := result.LastInsertId()
+
+	customerID, err := result.LastInsertId()
 	if err != nil {
-		log.Printf("Failed to get customer ID: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to get customer ID")
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to get customer ID", err.Error())
 		return
 	}
+
+	// Retrieve the created customer
+	var customer models.Customer
+	query = `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+		created_at, updated_at FROM Customer WHERE customer_id = ?`
 	
-	c.CustomerID = int(id)
-	log.Printf("Created customer with ID: %d", c.CustomerID)
-	
-	// Return the created customer
-	w.Header().Set("Location", fmt.Sprintf("/api/customers/%d", c.CustomerID))
-	respondJSON(w, http.StatusCreated, c)
+	err = ch.db.Get(&customer, query, customerID)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve created customer", err.Error())
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusCreated, customer)
 }
 
 // UpdateCustomer updates an existing customer
-func (h *Handler) UpdateCustomer(w http.ResponseWriter, r *http.Request) {
+func (ch *CustomerHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	customerID, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid customer ID")
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid customer ID", "Customer ID must be a number")
 		return
 	}
-	
-	var c models.Customer
-	if err := parseJSON(r, &c); err != nil {
-		log.Printf("Failed to parse customer JSON: %v", err)
-		respondError(w, http.StatusBadRequest, "Invalid request body")
+
+	var req models.UpdateCustomerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
 		return
 	}
-	
-	if c.NameOnContract == "" || c.Address == "" || c.UniqueID == "" {
-		respondError(w, http.StatusBadRequest, "Missing required fields")
-		return
-	}
-	
-	log.Printf("Updating customer ID: %d", id)
-	
-	query := `
-		UPDATE Customer 
-		SET name_on_contract = ?, address = ?, unique_id = ?, 
-		    email = ?, phone_number = ?
-		WHERE customer_id = ?
-	`
-	
-	result, err := h.db.Exec(query, c.NameOnContract, c.Address, c.UniqueID, 
-		c.Email, c.PhoneNumber, id)
+
+	// Check if customer exists
+	var exists bool
+	err = ch.db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM Customer WHERE customer_id = ?)", customerID)
 	if err != nil {
-		log.Printf("Failed to update customer %d: %v", id, err)
-		if strings.Contains(err.Error(), "Duplicate entry") {
-			respondError(w, http.StatusConflict, "Customer with this unique_id already exists")
-			return
+		WriteErrorResponse(w, http.StatusInternalServerError, "Database error", err.Error())
+		return
+	}
+	if !exists {
+		WriteErrorResponse(w, http.StatusNotFound, "Customer not found", "")
+		return
+	}
+
+	// Build dynamic update query
+	setParts := []string{}
+	args := []interface{}{}
+	
+	if req.NameOnContract != nil {
+		setParts = append(setParts, "name_on_contract = ?")
+		args = append(args, *req.NameOnContract)
+	}
+	if req.Address != nil {
+		setParts = append(setParts, "address = ?")
+		args = append(args, *req.Address)
+	}
+	if req.Email != nil {
+		setParts = append(setParts, "email = ?")
+		args = append(args, *req.Email)
+	}
+	if req.PhoneNumber != nil {
+		setParts = append(setParts, "phone_number = ?")
+		args = append(args, *req.PhoneNumber)
+	}
+
+	if len(setParts) == 0 {
+		WriteErrorResponse(w, http.StatusBadRequest, "No fields to update", "")
+		return
+	}
+
+	// Add updated_at and customer_id to query
+	setParts = append(setParts, "updated_at = NOW()")
+	args = append(args, customerID)
+
+	query := "UPDATE Customer SET " + JoinStrings(setParts, ", ") + " WHERE customer_id = ?"
+	
+	_, err = ch.db.Exec(query, args...)
+	if err != nil {
+		if IsUniqueConstraintError(err) {
+			WriteErrorResponse(w, http.StatusConflict, "Unique constraint violation", "unique_id must be unique")
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to update customer", err.Error())
 		}
-		respondError(w, http.StatusInternalServerError, "Failed to update customer")
 		return
 	}
+
+	// Retrieve updated customer
+	var customer models.Customer
+	selectQuery := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+		created_at, updated_at FROM Customer WHERE customer_id = ?`
 	
-	rowsAffected, err := result.RowsAffected()
+	err = ch.db.Get(&customer, selectQuery, customerID)
 	if err != nil {
-		log.Printf("Failed to check update result: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to check update result")
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve updated customer", err.Error())
 		return
 	}
-	
-	if rowsAffected == 0 {
-		respondError(w, http.StatusNotFound, "Customer not found")
-		return
-	}
-	
-	c.CustomerID = id
-	log.Printf("Updated customer ID: %d", id)
-	respondJSON(w, http.StatusOK, c)
+
+	WriteJSONResponse(w, http.StatusOK, customer)
 }
 
-// DeleteCustomer deletes a customer
-func (h *Handler) DeleteCustomer(w http.ResponseWriter, r *http.Request) {
+// DeleteCustomer soft deletes a customer
+func (ch *CustomerHandler) DeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
+	customerID, err := strconv.Atoi(vars["id"])
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "Invalid customer ID")
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid customer ID", "Customer ID must be a number")
 		return
 	}
-	
-	log.Printf("Deleting customer ID: %d", id)
-	
-	// Check if customer has any contracts
-	var count int
-	checkQuery := `
-		SELECT COUNT(*) 
-		FROM Contract_Customer_Mapping 
-		WHERE customer_id = ?
-	`
-	err = h.db.QueryRow(checkQuery, id).Scan(&count)
+
+	// Check if customer exists
+	var exists bool
+	err = ch.db.Get(&exists, "SELECT EXISTS(SELECT 1 FROM Customer WHERE customer_id = ?)", customerID)
 	if err != nil {
-		log.Printf("Failed to check customer contracts: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to check customer contracts")
+		WriteErrorResponse(w, http.StatusInternalServerError, "Database error", err.Error())
 		return
 	}
-	
-	if count > 0 {
-		log.Printf("Cannot delete customer %d: has %d active contracts", id, count)
-		respondError(w, http.StatusConflict, "Cannot delete customer with active contracts")
+	if !exists {
+		WriteErrorResponse(w, http.StatusNotFound, "Customer not found", "")
 		return
 	}
-	
+
 	query := `DELETE FROM Customer WHERE customer_id = ?`
-	result, err := h.db.Exec(query, id)
+	
+	_, err = ch.db.Exec(query, customerID)
 	if err != nil {
-		log.Printf("Failed to delete customer %d: %v", id, err)
-		respondError(w, http.StatusInternalServerError, "Failed to delete customer")
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to delete customer", err.Error())
 		return
 	}
-	
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		log.Printf("Failed to check delete result: %v", err)
-		respondError(w, http.StatusInternalServerError, "Failed to check delete result")
-		return
-	}
-	
-	if rowsAffected == 0 {
-		respondError(w, http.StatusNotFound, "Customer not found")
-		return
-	}
-	
-	log.Printf("Deleted customer ID: %d", id)
-	respondJSON(w, http.StatusNoContent, nil)
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{
+		"message": "Customer deleted successfully",
+	})
 }

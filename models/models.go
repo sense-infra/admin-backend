@@ -251,3 +251,40 @@ func (n NullableJSON) Value() (driver.Value, error) {
 	}
 	return []byte(n), nil
 }
+
+// Additional request/response models for handlers
+
+// CreateContractRequest represents a request to create a new contract
+type CreateContractRequest struct {
+	ServiceAddress    string    `json:"service_address" validate:"required"`
+	NotificationEmail *string   `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string   `json:"notification_phone" validate:"omitempty"`
+	StartDate         time.Time `json:"start_date" validate:"required"`
+	EndDate           time.Time `json:"end_date" validate:"required"`
+}
+
+// UpdateContractRequest represents a request to update a contract
+type UpdateContractRequest struct {
+	ServiceAddress    *string    `json:"service_address"`
+	NotificationEmail *string    `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string    `json:"notification_phone"`
+	StartDate         *time.Time `json:"start_date"`
+	EndDate           *time.Time `json:"end_date"`
+}
+
+// CreateCustomerRequest represents a request to create a new customer
+type CreateCustomerRequest struct {
+	NameOnContract string  `json:"name_on_contract" validate:"required"`
+	Address        string  `json:"address" validate:"required"`
+	UniqueID       string  `json:"unique_id" validate:"required"`
+	Email          *string `json:"email" validate:"omitempty,email"`
+	PhoneNumber    *string `json:"phone_number"`
+}
+
+// UpdateCustomerRequest represents a request to update a customer
+type UpdateCustomerRequest struct {
+	NameOnContract *string `json:"name_on_contract"`
+	Address        *string `json:"address"`
+	Email          *string `json:"email" validate:"omitempty,email"`
+	PhoneNumber    *string `json:"phone_number"`
+}
