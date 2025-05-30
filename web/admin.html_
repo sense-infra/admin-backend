@@ -152,12 +152,6 @@
             background: #2f855a;
         }
 
-        .btn-small {
-            padding: 6px 12px;
-            font-size: 12px;
-            margin: 2px;
-        }
-
         .form-group {
             margin-bottom: 20px;
         }
@@ -273,81 +267,6 @@
             margin-top: 5px;
         }
 
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-        }
-
-        .modal-content {
-            background-color: white;
-            margin: 5% auto;
-            padding: 30px;
-            border-radius: 10px;
-            width: 90%;
-            max-width: 500px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .modal-title {
-            font-size: 24px;
-            color: #14171a;
-        }
-
-        .close {
-            color: #aaa;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .close:hover,
-        .close:focus {
-            color: #000;
-        }
-
-        .api-key-display {
-            background: #f7fafc;
-            border: 2px dashed #667eea;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-        }
-
-        .api-key-value {
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: #2d3748;
-            background: white;
-            padding: 10px;
-            border-radius: 6px;
-            word-break: break-all;
-            margin: 10px 0;
-        }
-
-        .warning-box {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 15px 0;
-            color: #856404;
-        }
-
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -361,12 +280,6 @@
 
             .stats-grid {
                 grid-template-columns: 1fr;
-            }
-
-            .modal-content {
-                width: 95%;
-                margin: 10% auto;
-                padding: 20px;
             }
         }
     </style>
@@ -459,11 +372,7 @@
             <!-- API Keys Section -->
             <div class="section" id="api-keys">
                 <h2 class="section-title">API Key Management</h2>
-                <div style="margin-bottom: 20px;">
-                    <button class="btn btn-success" id="createAPIKeyBtn">Create New API Key</button>
-                    <button class="btn" id="refreshAPIKeysBtn">Refresh API Keys</button>
-                </div>
-                <div id="apiKeysAlert"></div>
+                <button class="btn" id="refreshAPIKeysBtn">Refresh API Keys</button>
                 <div id="apiKeysContent" class="loading">Click "Refresh API Keys" to load API key data</div>
             </div>
 
@@ -486,126 +395,6 @@
                 <h2 class="section-title">System Health</h2>
                 <button class="btn" id="checkHealthBtn">Check Health</button>
                 <div id="healthContent" class="loading">Click "Check Health" to view system status</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Create API Key Modal -->
-    <div id="createAPIKeyModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Create New API Key</h3>
-                <span class="close" id="closeCreateModal">&times;</span>
-            </div>
-            <form id="createAPIKeyForm">
-                <div class="form-group">
-                    <label for="apiKeyName">API Key Name *</label>
-                    <input type="text" id="apiKeyName" class="form-control" required placeholder="e.g., Mobile App Access">
-                </div>
-                <div class="form-group">
-                    <label for="apiKeyDescription">Description</label>
-                    <textarea id="apiKeyDescription" class="form-control" rows="3" placeholder="What will this API key be used for?"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Permissions *</label>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 2px solid #e2e8f0;">
-                        <div style="margin-bottom: 15px;">
-                            <strong>Customers</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="customers-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <strong>Contracts</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="contracts-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <strong>Events</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-read" style="margin-right: 5px;" checked> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-create" style="margin-right: 5px;" checked> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-update" style="margin-right: 5px;"> Update
-                                </label>
-                            </div>
-                        </div>
-                        <div>
-                            <strong>API Keys</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="api_keys-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    <small style="color: #666; margin-top: 5px; display: block;">Select the permissions this API key should have. Events read/create are selected by default.</small>
-                </div>
-                <div class="form-group">
-                    <label for="rateLimit">Rate Limit (requests per hour)</label>
-                    <input type="number" id="rateLimit" class="form-control" value="1000" min="1" max="10000">
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn" id="cancelCreateAPIKey">Cancel</button>
-                    <button type="submit" class="btn btn-success">Create API Key</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- API Key Created Modal -->
-    <div id="apiKeyCreatedModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">API Key Created Successfully</h3>
-                <span class="close" id="closeCreatedModal">&times;</span>
-            </div>
-            <div class="warning-box">
-                <strong>⚠️ Important:</strong> This is the only time you'll see the full API key. Copy it now and store it securely.
-            </div>
-            <div class="api-key-display">
-                <h4>Your new API key:</h4>
-                <div class="api-key-value" id="newAPIKeyValue"></div>
-                <button class="btn" id="copyAPIKeyBtn">Copy to Clipboard</button>
-            </div>
-            <div style="text-align: center; margin-top: 20px;">
-                <button class="btn btn-success" id="acknowledgeAPIKey">I've copied the key</button>
             </div>
         </div>
     </div>
@@ -640,15 +429,6 @@
             document.getElementById('refreshContractsBtn').addEventListener('click', loadContracts);
             document.getElementById('checkHealthBtn').addEventListener('click', checkHealth);
             
-            // API Key management
-            document.getElementById('createAPIKeyBtn').addEventListener('click', showCreateAPIKeyModal);
-            document.getElementById('createAPIKeyForm').addEventListener('submit', createAPIKey);
-            document.getElementById('closeCreateModal').addEventListener('click', hideCreateAPIKeyModal);
-            document.getElementById('cancelCreateAPIKey').addEventListener('click', hideCreateAPIKeyModal);
-            document.getElementById('closeCreatedModal').addEventListener('click', hideAPIKeyCreatedModal);
-            document.getElementById('acknowledgeAPIKey').addEventListener('click', hideAPIKeyCreatedModal);
-            document.getElementById('copyAPIKeyBtn').addEventListener('click', copyAPIKeyToClipboard);
-            
             // Navigation
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.addEventListener('click', function(e) {
@@ -656,13 +436,6 @@
                     const section = this.dataset.section;
                     showSection(section);
                 });
-            });
-
-            // Close modals when clicking outside
-            window.addEventListener('click', function(event) {
-                if (event.target.classList.contains('modal')) {
-                    event.target.style.display = 'none';
-                }
             });
         }
 
@@ -783,157 +556,6 @@
             setTimeout(() => {
                 alertDiv.innerHTML = '';
             }, 5000);
-        }
-
-        // Modal functions
-        function showCreateAPIKeyModal() {
-            document.getElementById('createAPIKeyModal').style.display = 'block';
-        }
-
-        function hideCreateAPIKeyModal() {
-            document.getElementById('createAPIKeyModal').style.display = 'none';
-            document.getElementById('createAPIKeyForm').reset();
-            // Reset all permission checkboxes
-            const checkboxes = document.querySelectorAll('#createAPIKeyForm input[type="checkbox"]');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = false;
-            });
-            // Set default permissions (events read/create)
-            document.getElementById('events-read').checked = true;
-            document.getElementById('events-create').checked = true;
-        }
-
-        function hideAPIKeyCreatedModal() {
-            document.getElementById('apiKeyCreatedModal').style.display = 'none';
-            loadAPIKeys(); // Refresh the API keys list
-        }
-
-        async function copyAPIKeyToClipboard() {
-            const apiKeyValue = document.getElementById('newAPIKeyValue').textContent;
-            try {
-                await navigator.clipboard.writeText(apiKeyValue);
-                document.getElementById('copyAPIKeyBtn').textContent = 'Copied!';
-                setTimeout(() => {
-                    document.getElementById('copyAPIKeyBtn').textContent = 'Copy to Clipboard';
-                }, 2000);
-            } catch (err) {
-                console.error('Failed to copy: ', err);
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = apiKeyValue;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                document.getElementById('copyAPIKeyBtn').textContent = 'Copied!';
-            }
-        }
-
-        // API Key management functions
-        function collectPermissions() {
-            const permissions = {};
-            const resources = ['customers', 'contracts', 'events', 'api_keys'];
-            const actions = ['read', 'create', 'update', 'delete'];
-            
-            resources.forEach(resource => {
-                const resourcePermissions = [];
-                actions.forEach(action => {
-                    const checkbox = document.getElementById(`${resource}-${action}`);
-                    if (checkbox && checkbox.checked) {
-                        resourcePermissions.push(action);
-                    }
-                });
-                if (resourcePermissions.length > 0) {
-                    permissions[resource] = resourcePermissions;
-                }
-            });
-            
-            return permissions;
-        }
-
-        async function createAPIKey(e) {
-            e.preventDefault();
-            
-            const permissions = collectPermissions();
-            
-            // Validate that at least one permission is selected
-            if (Object.keys(permissions).length === 0) {
-                showAlert('apiKeysAlert', 'Please select at least one permission for the API key.', 'error');
-                return;
-            }
-            
-            const apiKeyData = {
-                key_name: document.getElementById('apiKeyName').value,
-                description: document.getElementById('apiKeyDescription').value,
-                rate_limit_per_hour: parseInt(document.getElementById('rateLimit').value),
-                permissions: permissions,
-                contract_access: []
-            };
-
-            try {
-                const response = await apiRequest('/auth/api-keys', {
-                    method: 'POST',
-                    body: JSON.stringify(apiKeyData)
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    document.getElementById('newAPIKeyValue').textContent = data.plain_key;
-                    hideCreateAPIKeyModal();
-                    document.getElementById('apiKeyCreatedModal').style.display = 'block';
-                    showAlert('apiKeysAlert', 'API key created successfully!', 'success');
-                } else {
-                    const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to create API key', 'error');
-                }
-            } catch (error) {
-                console.error('Error creating API key:', error);
-                showAlert('apiKeysAlert', 'Network error creating API key', 'error');
-            }
-        }
-
-        async function deleteAPIKey(apiKeyId, keyName) {
-            if (!confirm(`Are you sure you want to PERMANENTLY DELETE the API key "${keyName}"? This action cannot be undone and will immediately revoke access for any applications using this key.`)) {
-                return;
-            }
-
-            try {
-                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
-                    method: 'DELETE'
-                });
-
-                if (response.ok) {
-                    showAlert('apiKeysAlert', 'API key permanently deleted successfully!', 'success');
-                    loadAPIKeys(); // Refresh the list
-                    loadAPIKeyCount(); // Update the dashboard count
-                } else {
-                    const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to delete API key', 'error');
-                }
-            } catch (error) {
-                console.error('Error deleting API key:', error);
-                showAlert('apiKeysAlert', 'Network error deleting API key', 'error');
-            }
-        }
-
-        async function toggleAPIKeyStatus(apiKeyId, currentStatus) {
-            try {
-                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ active: !currentStatus })
-                });
-
-                if (response.ok) {
-                    showAlert('apiKeysAlert', `API key ${!currentStatus ? 'activated' : 'deactivated'} successfully!`, 'success');
-                    loadAPIKeys(); // Refresh the list
-                } else {
-                    const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to update API key', 'error');
-                }
-            } catch (error) {
-                console.error('Error updating API key:', error);
-                showAlert('apiKeysAlert', 'Network error updating API key', 'error');
-            }
         }
 
         // Data loading functions
@@ -1071,50 +693,23 @@
                         <tr>
                             <th>Name</th>
                             <th>Prefix</th>
-                            <th>Permissions</th>
                             <th>Created By</th>
                             <th>Last Used</th>
                             <th>Usage Count</th>
                             <th>Status</th>
-                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${apiKeys.map(key => {
-                            // Format permissions for display
-                            let permissionsDisplay = 'None';
-                            if (key.permissions && typeof key.permissions === 'object') {
-                                const permissionsList = Object.entries(key.permissions)
-                                    .map(([resource, actions]) => `${resource}: ${Array.isArray(actions) ? actions.join(', ') : actions}`)
-                                    .join('<br>');
-                                permissionsDisplay = permissionsList || 'None';
-                            }
-                            
-                            return `
+                        ${apiKeys.map(key => `
                             <tr>
-                                <td>
-                                    <strong>${key.key_name}</strong>
-                                    ${key.description ? `<br><small style="color: #666;">${key.description}</small>` : ''}
-                                </td>
+                                <td>${key.key_name}</td>
                                 <td><code>${key.key_prefix}...</code></td>
-                                <td><small>${permissionsDisplay}</small></td>
-                                <td>${key.creator ? key.creator.username : 'Unknown'}</td>
+                                <td>${key.created_by_user ? key.created_by_user.username : 'Unknown'}</td>
                                 <td>${key.last_used ? new Date(key.last_used).toLocaleString() : 'Never'}</td>
-                                <td>${key.usage_count || 0}</td>
+                                <td>${key.usage_count}</td>
                                 <td><span class="status-badge status-${key.active ? 'active' : 'inactive'}">${key.active ? 'Active' : 'Inactive'}</span></td>
-                                <td>
-                                    <button class="btn btn-small ${key.active ? 'btn-danger' : 'btn-success'}" 
-                                            onclick="toggleAPIKeyStatus(${key.api_key_id}, ${key.active})">
-                                        ${key.active ? 'Deactivate' : 'Activate'}
-                                    </button>
-                                    <button class="btn btn-small btn-danger" 
-                                            onclick="deleteAPIKey(${key.api_key_id}, '${key.key_name.replace(/'/g, "\\'")}')">
-                                        Delete
-                                    </button>
-                                </td>
                             </tr>
-                        `;
-                        }).join('')}
+                        `).join('')}
                     </tbody>
                 </table>
             `;
