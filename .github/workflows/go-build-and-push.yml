@@ -1,0 +1,51 @@
+name: Go Build and Push to GHCR
+
+on:
+  push:
+    branches:
+      - main   # Only run on the main branch
+    tags:
+      - '*'    # Run on all tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+    # Checkout the code
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # Set up Go environment
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    # Cache Go modules
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: go-mod-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          go-mod-
+
+    # Build the Go application
+    - name: Build the Go application
+      run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app/servicebin .
+
+    # Log in to GitHub Container Registry
+    - name: Log in to GitHub Container Registry
+      run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+    # Build Docker image using repo name and branch or tag
+    - name: Build Docker image
+      run: docker build -t ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.ref_name }} .
+
+    # Push Docker image to GitHub Container Registry
+    - name: Push Docker image
+      run: docker push ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.ref_name }}
