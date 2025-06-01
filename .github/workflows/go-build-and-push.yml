@@ -49,3 +49,13 @@ jobs:
     # Push Docker image to GitHub Container Registry
     - name: Push Docker image
       run: docker push ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}:${{ github.ref_name }}
+
+    - name: Kubernetes context
+      uses: azure/k8s-set-context@v4
+      with:
+        method: kubeconfig
+        kubeconfig: ${{ secrets.DEV_KUBE_CONFIG }}
+        namespace: dev
+
+    - name: Kubernetes Deploy Rollout
+      run: kubectl -n dev rollout restart deployment admin-backend
