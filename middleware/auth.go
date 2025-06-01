@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -77,12 +78,51 @@ func (am *AuthMiddleware) LogAPIUsage(next http.Handler) http.Handler {
 	})
 }
 
+// AddRateLimitHeaders middleware that adds rate limit headers (mux.MiddlewareFunc compatible)
+func (am *AuthMiddleware) AddRateLimitHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Call the next handler first
+		next.ServeHTTP(w, r)
+
+		// Add rate limit headers if this was an API key request
+		authContext := GetAuthContext(r)
+		if authContext != nil && authContext.IsAPIKey && authContext.APIKeyID != nil {
+			rateLimitInfo, err := am.authService.GetRateLimitInfo(*authContext.APIKeyID)
+			if err == nil {
+				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rateLimitInfo.Limit))
+				w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitInfo.Remaining))
+				w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitInfo.ResetAt))
+			}
+		}
+	})
+}
+
 // RequireAuth middleware that requires authentication (mux.MiddlewareFunc compatible)
 func (am *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authContext, err := am.authenticate(r)
 		if err != nil {
-			am.writeErrorResponse(w, http.StatusUnauthorized, "Authentication required", err.Error())
+			statusCode := http.StatusUnauthorized
+			message := "Authentication required"
+			
+			// Handle specific errors
+			switch err {
+			case services.ErrRateLimitExceeded:
+				statusCode = http.StatusTooManyRequests
+				message = "API rate limit exceeded"
+			case services.ErrAPIKeyExpired:
+				message = "API key has expired"
+			case services.ErrAPIKeyInactive:
+				message = "API key is inactive"
+			case services.ErrInvalidCredentials:
+				message = "Invalid credentials"
+			case services.ErrUserLocked:
+				message = "User account is locked"
+			case services.ErrUserInactive:
+				message = "User account is inactive"
+			}
+			
+			am.writeErrorResponse(w, statusCode, message, err.Error())
 			return
 		}
 
@@ -176,6 +216,12 @@ func (am *AuthMiddleware) authenticate(r *http.Request) (*models.AuthContext, er
 
 func (am *AuthMiddleware) writeErrorResponse(w http.ResponseWriter, statusCode int, message, detail string) {
 	w.Header().Set("Content-Type", "application/json")
+	
+	// Special handling for rate limit errors
+	if statusCode == http.StatusTooManyRequests {
+		w.Header().Set("Retry-After", "3600") // 1 hour in seconds
+	}
+	
 	w.WriteHeader(statusCode)
 	
 	response := map[string]interface{}{

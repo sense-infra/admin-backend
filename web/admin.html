@@ -152,10 +152,20 @@
             background: #2f855a;
         }
 
-        .btn-small {
-            padding: 6px 12px;
-            font-size: 12px;
-            margin: 2px;
+        .btn-warning {
+            background: #ed8936;
+        }
+
+        .btn-warning:hover {
+            background: #dd6b20;
+        }
+
+        .btn-secondary {
+            background: #718096;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
         }
 
         .form-group {
@@ -181,6 +191,12 @@
         .form-control:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
 
         .table {
@@ -224,6 +240,12 @@
             border: 1px solid #feb2b2;
         }
 
+        .alert-warning {
+            background: #faf089;
+            color: #744210;
+            border: 1px solid #f6e05e;
+        }
+
         .status-badge {
             padding: 4px 8px;
             border-radius: 12px;
@@ -239,6 +261,16 @@
         .status-inactive {
             background: #fed7d7;
             color: #742a2a;
+        }
+
+        .status-limited {
+            background: #faf089;
+            color: #744210;
+        }
+
+        .status-warning {
+            background: #fbb6ce;
+            color: #97266d;
         }
 
         .loading {
@@ -273,7 +305,40 @@
             margin-top: 5px;
         }
 
-        /* Modal Styles */
+        .rate-limit-info {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+
+        .rate-limit-bar {
+            background: #e2e8f0;
+            border-radius: 4px;
+            height: 8px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+
+        .rate-limit-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .rate-limit-ok {
+            background: #38a169;
+        }
+
+        .rate-limit-warning {
+            background: #ed8936;
+        }
+
+        .rate-limit-danger {
+            background: #e53e3e;
+        }
+
         .modal {
             display: none;
             position: fixed;
@@ -291,61 +356,85 @@
             padding: 30px;
             border-radius: 10px;
             width: 90%;
-            max-width: 500px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .modal-title {
-            font-size: 24px;
-            color: #14171a;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
         }
 
         .close {
             color: #aaa;
+            float: right;
             font-size: 28px;
             font-weight: bold;
             cursor: pointer;
         }
 
-        .close:hover,
-        .close:focus {
+        .close:hover {
             color: #000;
         }
 
-        .api-key-display {
-            background: #f7fafc;
-            border: 2px dashed #667eea;
+        .usage-chart {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .api-key-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .permissions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .permission-group {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .permission-group h4 {
+            margin-bottom: 10px;
+            color: #4a5568;
+        }
+
+        .permission-checkbox {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .permission-checkbox input {
+            margin-right: 8px;
+        }
+
+        .key-display {
+            background: #f0f4f8;
+            border: 2px solid #667eea;
             border-radius: 8px;
             padding: 20px;
             margin: 20px 0;
             text-align: center;
         }
 
-        .api-key-value {
+        .key-value {
             font-family: 'Courier New', monospace;
-            font-size: 14px;
+            font-size: 18px;
+            font-weight: bold;
             color: #2d3748;
             background: white;
-            padding: 10px;
-            border-radius: 6px;
-            word-break: break-all;
-            margin: 10px 0;
-        }
-
-        .warning-box {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            border-radius: 6px;
             padding: 15px;
-            margin: 15px 0;
-            color: #856404;
+            border-radius: 4px;
+            margin: 10px 0;
+            word-break: break-all;
         }
 
         @media (max-width: 768px) {
@@ -353,7 +442,7 @@
                 transform: translateX(-100%);
                 transition: transform 0.3s ease;
             }
-            
+
             .main-content {
                 margin-left: 0;
                 padding: 20px;
@@ -364,9 +453,17 @@
             }
 
             .modal-content {
+                margin: 2% auto;
                 width: 95%;
-                margin: 10% auto;
                 padding: 20px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .permissions-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -402,7 +499,7 @@
             <div class="logo">🛡️ SenseGuard Admin</div>
             <div class="user-info">
                 <span id="userWelcome">Welcome, Admin</span>
-                <button class="btn" id="logoutBtn">Logout</button>
+                <button class="btn" onclick="logout()">Logout</button>
             </div>
         </div>
 
@@ -411,6 +508,7 @@
             <a href="#" class="nav-item active" data-section="dashboard">📊 Dashboard</a>
             <a href="#" class="nav-item" data-section="users">👥 Users</a>
             <a href="#" class="nav-item" data-section="api-keys">🔑 API Keys</a>
+            <a href="#" class="nav-item" data-section="rate-limits">📈 Rate Limits</a>
             <a href="#" class="nav-item" data-section="customers">👤 Customers</a>
             <a href="#" class="nav-item" data-section="contracts">📋 Contracts</a>
             <a href="#" class="nav-item" data-section="health">💊 System Health</a>
@@ -438,6 +536,14 @@
                         <div class="stat-number" id="totalContracts">-</div>
                         <div class="stat-label">Total Contracts</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="rateLimitedKeys">-</div>
+                        <div class="stat-label">Rate Limited Keys</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="totalAPIRequests">-</div>
+                        <div class="stat-label">API Requests (24h)</div>
+                    </div>
                 </div>
                 <div class="section" style="display: block;">
                     <h3>Recent Activity</h3>
@@ -445,6 +551,7 @@
                         <p>✅ System operational</p>
                         <p>🔐 Authentication system active</p>
                         <p>📊 Dashboard loaded successfully</p>
+                        <p>📈 Rate limiting system enabled</p>
                     </div>
                 </div>
             </div>
@@ -452,161 +559,93 @@
             <!-- Users Section -->
             <div class="section" id="users">
                 <h2 class="section-title">User Management</h2>
-                <button class="btn" id="refreshUsersBtn">Refresh Users</button>
+                <button class="btn" onclick="loadUsers()">Refresh Users</button>
                 <div id="usersContent" class="loading">Click "Refresh Users" to load user data</div>
             </div>
 
             <!-- API Keys Section -->
             <div class="section" id="api-keys">
                 <h2 class="section-title">API Key Management</h2>
-                <div style="margin-bottom: 20px;">
-                    <button class="btn btn-success" id="createAPIKeyBtn">Create New API Key</button>
-                    <button class="btn" id="refreshAPIKeysBtn">Refresh API Keys</button>
+                
+                <!-- API Key Creation Form -->
+                <div class="api-key-form">
+                    <h3>Create New API Key</h3>
+                    <form id="createAPIKeyForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="keyName">API Key Name</label>
+                                <input type="text" id="keyName" class="form-control" required placeholder="e.g., Production API Key">
+                            </div>
+                            <div class="form-group">
+                                <label for="rateLimit">Rate Limit (per hour)</label>
+                                <input type="number" id="rateLimit" class="form-control" value="1000" min="1" max="10000">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="keyDescription">Description (optional)</label>
+                            <textarea id="keyDescription" class="form-control" rows="3" placeholder="Brief description of this API key's purpose"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="expiresAt">Expiration Date (optional)</label>
+                            <input type="date" id="expiresAt" class="form-control">
+                        </div>
+
+                        <h4>Permissions</h4>
+                        <div class="permissions-grid" id="permissionsGrid">
+                            <!-- Permissions will be loaded dynamically -->
+                        </div>
+
+                        <button type="submit" class="btn btn-success">Create API Key</button>
+                        <button type="button" class="btn btn-secondary" onclick="resetAPIKeyForm()">Reset Form</button>
+                    </form>
                 </div>
-                <div id="apiKeysAlert"></div>
+
+                <div style="margin: 20px 0;">
+                    <button class="btn" onclick="loadAPIKeys()">Refresh API Keys</button>
+                    <button class="btn btn-warning" onclick="loadAPIKeyUsageReport()">Usage Report</button>
+                </div>
+                
                 <div id="apiKeysContent" class="loading">Click "Refresh API Keys" to load API key data</div>
+            </div>
+
+            <!-- Rate Limits Section -->
+            <div class="section" id="rate-limits">
+                <h2 class="section-title">Rate Limit Monitoring</h2>
+                <button class="btn" onclick="loadRateLimits()">Refresh Rate Limits</button>
+                <button class="btn btn-warning" onclick="loadRateLimitAnalytics()">View Analytics</button>
+                <div id="rateLimitsContent" class="loading">Click "Refresh Rate Limits" to load rate limit data</div>
             </div>
 
             <!-- Customers Section -->
             <div class="section" id="customers">
                 <h2 class="section-title">Customer Management</h2>
-                <button class="btn" id="refreshCustomersBtn">Refresh Customers</button>
+                <button class="btn" onclick="loadCustomers()">Refresh Customers</button>
                 <div id="customersContent" class="loading">Click "Refresh Customers" to load customer data</div>
             </div>
 
             <!-- Contracts Section -->
             <div class="section" id="contracts">
                 <h2 class="section-title">Contract Management</h2>
-                <button class="btn" id="refreshContractsBtn">Refresh Contracts</button>
+                <button class="btn" onclick="loadContracts()">Refresh Contracts</button>
                 <div id="contractsContent" class="loading">Click "Refresh Contracts" to load contract data</div>
             </div>
 
             <!-- Health Section -->
             <div class="section" id="health">
                 <h2 class="section-title">System Health</h2>
-                <button class="btn" id="checkHealthBtn">Check Health</button>
+                <button class="btn" onclick="checkHealth()">Check Health</button>
                 <div id="healthContent" class="loading">Click "Check Health" to view system status</div>
             </div>
         </div>
     </div>
 
-    <!-- Create API Key Modal -->
-    <div id="createAPIKeyModal" class="modal">
+    <!-- Modal for detailed views -->
+    <div id="detailModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Create New API Key</h3>
-                <span class="close" id="closeCreateModal">&times;</span>
-            </div>
-            <form id="createAPIKeyForm">
-                <div class="form-group">
-                    <label for="apiKeyName">API Key Name *</label>
-                    <input type="text" id="apiKeyName" class="form-control" required placeholder="e.g., Mobile App Access">
-                </div>
-                <div class="form-group">
-                    <label for="apiKeyDescription">Description</label>
-                    <textarea id="apiKeyDescription" class="form-control" rows="3" placeholder="What will this API key be used for?"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Permissions *</label>
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 6px; border: 2px solid #e2e8f0;">
-                        <div style="margin-bottom: 15px;">
-                            <strong>Customers</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="customers-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="customers-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <strong>Contracts</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="contracts-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="contracts-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 15px;">
-                            <strong>Events</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-read" style="margin-right: 5px;" checked> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-create" style="margin-right: 5px;" checked> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="events-update" style="margin-right: 5px;"> Update
-                                </label>
-                            </div>
-                        </div>
-                        <div>
-                            <strong>API Keys</strong>
-                            <div style="margin-left: 20px; margin-top: 5px;">
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-read" style="margin-right: 5px;"> Read
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-create" style="margin-right: 5px;"> Create
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center; margin-right: 15px;">
-                                    <input type="checkbox" id="api_keys-update" style="margin-right: 5px;"> Update
-                                </label>
-                                <label style="font-weight: normal; display: inline-flex; align-items: center;">
-                                    <input type="checkbox" id="api_keys-delete" style="margin-right: 5px;"> Delete
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                    <small style="color: #666; margin-top: 5px; display: block;">Select the permissions this API key should have. Events read/create are selected by default.</small>
-                </div>
-                <div class="form-group">
-                    <label for="rateLimit">Rate Limit (requests per hour)</label>
-                    <input type="number" id="rateLimit" class="form-control" value="1000" min="1" max="10000">
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                    <button type="button" class="btn" id="cancelCreateAPIKey">Cancel</button>
-                    <button type="submit" class="btn btn-success">Create API Key</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- API Key Created Modal -->
-    <div id="apiKeyCreatedModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">API Key Created Successfully</h3>
-                <span class="close" id="closeCreatedModal">&times;</span>
-            </div>
-            <div class="warning-box">
-                <strong>⚠️ Important:</strong> This is the only time you'll see the full API key. Copy it now and store it securely.
-            </div>
-            <div class="api-key-display">
-                <h4>Your new API key:</h4>
-                <div class="api-key-value" id="newAPIKeyValue"></div>
-                <button class="btn" id="copyAPIKeyBtn">Copy to Clipboard</button>
-            </div>
-            <div style="text-align: center; margin-top: 20px;">
-                <button class="btn btn-success" id="acknowledgeAPIKey">I've copied the key</button>
-            </div>
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modalContent"></div>
         </div>
     </div>
 
@@ -614,7 +653,7 @@
         // Global variables
         let authToken = localStorage.getItem('authToken');
         let currentUser = null;
-        const API_BASE = '';
+        const API_BASE = ''; // Updated to use no prefix
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -629,26 +668,10 @@
         function setupEventListeners() {
             // Login form
             document.getElementById('loginForm').addEventListener('submit', login);
-            
-            // Logout button
-            document.getElementById('logoutBtn').addEventListener('click', logout);
-            
-            // Refresh buttons
-            document.getElementById('refreshUsersBtn').addEventListener('click', loadUsers);
-            document.getElementById('refreshAPIKeysBtn').addEventListener('click', loadAPIKeys);
-            document.getElementById('refreshCustomersBtn').addEventListener('click', loadCustomers);
-            document.getElementById('refreshContractsBtn').addEventListener('click', loadContracts);
-            document.getElementById('checkHealthBtn').addEventListener('click', checkHealth);
-            
-            // API Key management
-            document.getElementById('createAPIKeyBtn').addEventListener('click', showCreateAPIKeyModal);
+
+            // API Key creation form
             document.getElementById('createAPIKeyForm').addEventListener('submit', createAPIKey);
-            document.getElementById('closeCreateModal').addEventListener('click', hideCreateAPIKeyModal);
-            document.getElementById('cancelCreateAPIKey').addEventListener('click', hideCreateAPIKeyModal);
-            document.getElementById('closeCreatedModal').addEventListener('click', hideAPIKeyCreatedModal);
-            document.getElementById('acknowledgeAPIKey').addEventListener('click', hideAPIKeyCreatedModal);
-            document.getElementById('copyAPIKeyBtn').addEventListener('click', copyAPIKeyToClipboard);
-            
+
             // Navigation
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.addEventListener('click', function(e) {
@@ -658,12 +681,13 @@
                 });
             });
 
-            // Close modals when clicking outside
-            window.addEventListener('click', function(event) {
-                if (event.target.classList.contains('modal')) {
-                    event.target.style.display = 'none';
+            // Modal close on click outside
+            window.onclick = function(event) {
+                const modal = document.getElementById('detailModal');
+                if (event.target == modal) {
+                    closeModal();
                 }
-            });
+            }
         }
 
         // Authentication functions
@@ -694,11 +718,11 @@
                     localStorage.setItem('authToken', authToken);
                     showDashboard();
                     loadDashboardData();
+                    loadPermissions(); // Load permissions for API key creation
                 } else {
                     showAlert('loginAlert', data.error || 'Login failed', 'error');
                 }
             } catch (error) {
-                console.error('Login error:', error);
                 showAlert('loginAlert', 'Network error. Please try again.', 'error');
             }
         }
@@ -716,13 +740,13 @@
                     currentUser = data;
                     showDashboard();
                     loadDashboardData();
+                    loadPermissions(); // Load permissions for API key creation
                 } else {
                     localStorage.removeItem('authToken');
                     authToken = null;
                     showLogin();
                 }
             } catch (error) {
-                console.error('Token validation error:', error);
                 localStorage.removeItem('authToken');
                 authToken = null;
                 showLogin();
@@ -736,9 +760,9 @@
                     headers: {
                         'Authorization': `Bearer ${authToken}`
                     }
-                }).catch(error => console.error('Logout error:', error));
+                });
             }
-            
+
             localStorage.removeItem('authToken');
             authToken = null;
             currentUser = null;
@@ -754,9 +778,9 @@
         function showDashboard() {
             document.getElementById('loginContainer').style.display = 'none';
             document.getElementById('dashboardContainer').style.display = 'block';
-            
+
             if (currentUser) {
-                document.getElementById('userWelcome').textContent = 
+                document.getElementById('userWelcome').textContent =
                     `Welcome, ${currentUser.first_name || currentUser.username}`;
             }
         }
@@ -766,10 +790,10 @@
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
             });
-            
+
             // Show selected section
             document.getElementById(sectionName).classList.add('active');
-            
+
             // Update navigation
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
@@ -785,115 +809,225 @@
             }, 5000);
         }
 
-        // Modal functions
-        function showCreateAPIKeyModal() {
-            document.getElementById('createAPIKeyModal').style.display = 'block';
+        function showModal(title, content) {
+            document.getElementById('modalContent').innerHTML = `<h2>${title}</h2>${content}`;
+            document.getElementById('detailModal').style.display = 'block';
         }
 
-        function hideCreateAPIKeyModal() {
-            document.getElementById('createAPIKeyModal').style.display = 'none';
-            document.getElementById('createAPIKeyForm').reset();
-            // Reset all permission checkboxes
-            const checkboxes = document.querySelectorAll('#createAPIKeyForm input[type="checkbox"]');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = false;
-            });
-            // Set default permissions (events read/create)
-            document.getElementById('events-read').checked = true;
-            document.getElementById('events-create').checked = true;
+        function closeModal() {
+            document.getElementById('detailModal').style.display = 'none';
         }
 
-        function hideAPIKeyCreatedModal() {
-            document.getElementById('apiKeyCreatedModal').style.display = 'none';
-            loadAPIKeys(); // Refresh the API keys list
-        }
-
-        async function copyAPIKeyToClipboard() {
-            const apiKeyValue = document.getElementById('newAPIKeyValue').textContent;
+        // Permissions loading for API key creation
+        async function loadPermissions() {
             try {
-                await navigator.clipboard.writeText(apiKeyValue);
-                document.getElementById('copyAPIKeyBtn').textContent = 'Copied!';
-                setTimeout(() => {
-                    document.getElementById('copyAPIKeyBtn').textContent = 'Copy to Clipboard';
-                }, 2000);
-            } catch (err) {
-                console.error('Failed to copy: ', err);
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = apiKeyValue;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                document.getElementById('copyAPIKeyBtn').textContent = 'Copied!';
+                const response = await apiRequest('/auth/roles');
+                if (response.ok) {
+                    const roles = await response.json();
+                    displayPermissionsGrid(roles);
+                }
+            } catch (error) {
+                console.error('Error loading permissions:', error);
             }
+        }
+
+        function displayPermissionsGrid(roles) {
+            const permissionsGrid = document.getElementById('permissionsGrid');
+            
+            const defaultPermissions = {
+                'customers': ['read', 'create', 'update', 'delete'],
+                'contracts': ['read', 'create', 'update', 'delete'],
+                'users': ['read', 'create', 'update', 'delete'],
+                'api_keys': ['read', 'create', 'update', 'delete'],
+                'system': ['read', 'diagnostics']
+            };
+
+            let gridHtml = '';
+            for (const [resource, actions] of Object.entries(defaultPermissions)) {
+                gridHtml += `
+                    <div class="permission-group">
+                        <h4>${resource.charAt(0).toUpperCase() + resource.slice(1)}</h4>
+                        ${actions.map(action => `
+                            <div class="permission-checkbox">
+                                <input type="checkbox" id="perm_${resource}_${action}" name="permissions" value="${resource}:${action}">
+                                <label for="perm_${resource}_${action}">${action.charAt(0).toUpperCase() + action.slice(1)}</label>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            permissionsGrid.innerHTML = gridHtml;
         }
 
         // API Key management functions
-        function collectPermissions() {
-            const permissions = {};
-            const resources = ['customers', 'contracts', 'events', 'api_keys'];
-            const actions = ['read', 'create', 'update', 'delete'];
-            
-            resources.forEach(resource => {
-                const resourcePermissions = [];
-                actions.forEach(action => {
-                    const checkbox = document.getElementById(`${resource}-${action}`);
-                    if (checkbox && checkbox.checked) {
-                        resourcePermissions.push(action);
-                    }
-                });
-                if (resourcePermissions.length > 0) {
-                    permissions[resource] = resourcePermissions;
-                }
-            });
-            
-            return permissions;
-        }
-
         async function createAPIKey(e) {
             e.preventDefault();
             
-            const permissions = collectPermissions();
+            const keyName = document.getElementById('keyName').value;
+            const rateLimit = parseInt(document.getElementById('rateLimit').value);
+            const description = document.getElementById('keyDescription').value;
+            const expiresAt = document.getElementById('expiresAt').value;
             
-            // Validate that at least one permission is selected
-            if (Object.keys(permissions).length === 0) {
-                showAlert('apiKeysAlert', 'Please select at least one permission for the API key.', 'error');
-                return;
-            }
+            // Collect selected permissions
+            const permissionElements = document.querySelectorAll('input[name="permissions"]:checked');
+            const permissions = {};
             
-            const apiKeyData = {
-                key_name: document.getElementById('apiKeyName').value,
-                description: document.getElementById('apiKeyDescription').value,
-                rate_limit_per_hour: parseInt(document.getElementById('rateLimit').value),
-                permissions: permissions,
-                contract_access: []
+            permissionElements.forEach(elem => {
+                const [resource, action] = elem.value.split(':');
+                if (!permissions[resource]) {
+                    permissions[resource] = [];
+                }
+                permissions[resource].push(action);
+            });
+
+            const requestData = {
+                key_name: keyName,
+                rate_limit_per_hour: rateLimit,
+                permissions: permissions
             };
+
+            if (description) {
+                requestData.description = description;
+            }
+
+            if (expiresAt) {
+                requestData.expires_at = expiresAt;
+            }
 
             try {
                 const response = await apiRequest('/auth/api-keys', {
                     method: 'POST',
-                    body: JSON.stringify(apiKeyData)
+                    body: JSON.stringify(requestData)
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('newAPIKeyValue').textContent = data.plain_key;
-                    hideCreateAPIKeyModal();
-                    document.getElementById('apiKeyCreatedModal').style.display = 'block';
-                    showAlert('apiKeysAlert', 'API key created successfully!', 'success');
+                    console.log('API Response:', data); // Debug log
+                    
+                    // Handle different possible response formats
+                    const apiKey = data.api_key || data.key || data.token;
+                    const apiKeyId = data.api_key_id || data.id;
+                    
+                    if (apiKey && apiKeyId) {
+                        showCreatedAPIKey(apiKey, apiKeyId, keyName);
+                    } else {
+                        console.error('Unexpected response format:', data);
+                        showModal('API Key Created', `
+                            <div class="alert alert-success">✅ API key "${keyName}" created successfully!</div>
+                            <div class="alert alert-warning">The API key was created but the response format was unexpected. Please check the API keys list.</div>
+                        `);
+                    }
+                    
+                    resetAPIKeyForm();
+                    loadAPIKeys(); // Refresh the API keys list
+                    loadDashboardData(); // Update dashboard stats
                 } else {
                     const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to create API key', 'error');
+                    showModal('Error Creating API Key', `<div class="alert alert-error">${error.error || 'Failed to create API key'}</div>`);
                 }
             } catch (error) {
-                console.error('Error creating API key:', error);
-                showAlert('apiKeysAlert', 'Network error creating API key', 'error');
+                console.error('Create API Key Error:', error);
+                showModal('Error', '<div class="alert alert-error">Network error creating API key</div>');
+            }
+        }
+
+        function showCreatedAPIKey(apiKey, apiKeyId, keyName) {
+            const content = `
+                <div class="alert alert-success">
+                    <strong>✅ API Key Created Successfully!</strong>
+                </div>
+                
+                <div class="key-display">
+                    <h4>Your New API Key</h4>
+                    <p><strong>Name:</strong> ${keyName}</p>
+                    <p><strong>ID:</strong> ${apiKeyId}</p>
+                    
+                    <div class="key-value" id="apiKeyValue">${apiKey}</div>
+                    
+                    <button class="btn" onclick="copyToClipboard('${apiKey}')">📋 Copy to Clipboard</button>
+                    
+                    <div class="alert alert-warning" style="margin-top: 15px;">
+                        <strong>⚠️ Important:</strong> This is the only time you'll see the full API key. Please save it securely!
+                    </div>
+                </div>
+            `;
+            
+            showModal('API Key Created', content);
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                // Create a temporary success message
+                const originalText = document.getElementById('apiKeyValue').textContent;
+                document.getElementById('apiKeyValue').textContent = '✅ Copied to clipboard!';
+                document.getElementById('apiKeyValue').style.background = '#c6f6d5';
+                document.getElementById('apiKeyValue').style.color = '#22543d';
+                
+                setTimeout(() => {
+                    document.getElementById('apiKeyValue').textContent = originalText;
+                    document.getElementById('apiKeyValue').style.background = 'white';
+                    document.getElementById('apiKeyValue').style.color = '#2d3748';
+                }, 2000);
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+            });
+        }
+
+        function resetAPIKeyForm() {
+            document.getElementById('createAPIKeyForm').reset();
+            document.getElementById('rateLimit').value = '1000';
+            
+            // Uncheck all permissions
+            document.querySelectorAll('input[name="permissions"]').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+
+        async function toggleAPIKey(apiKeyId, currentStatus) {
+            const action = currentStatus ? 'deactivate' : 'activate';
+            const confirmMessage = `Are you sure you want to ${action} this API key?`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ active: !currentStatus })
+                });
+
+                if (response.ok) {
+                    loadAPIKeys(); // Refresh the list
+                    loadDashboardData(); // Update dashboard stats
+                    
+                    // Show success message
+                    const alertHtml = `<div class="alert alert-success">✅ API key ${action}d successfully</div>`;
+                    const contentDiv = document.getElementById('apiKeysContent');
+                    contentDiv.innerHTML = alertHtml + contentDiv.innerHTML;
+                    
+                    // Remove the alert after 3 seconds
+                    setTimeout(() => {
+                        const alert = contentDiv.querySelector('.alert-success');
+                        if (alert) {
+                            alert.remove();
+                        }
+                    }, 3000);
+                } else {
+                    const error = await response.json();
+                    alert(`Failed to ${action} API key: ${error.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                console.error(`Toggle API Key Error:`, error);
+                alert(`Network error ${action}ing API key`);
             }
         }
 
         async function deleteAPIKey(apiKeyId, keyName) {
-            if (!confirm(`Are you sure you want to PERMANENTLY DELETE the API key "${keyName}"? This action cannot be undone and will immediately revoke access for any applications using this key.`)) {
+            const confirmMessage = `Are you sure you want to permanently delete the API key "${keyName}"?\n\nThis action cannot be undone and will immediately invalidate the key.`;
+            
+            if (!confirm(confirmMessage)) {
                 return;
             }
 
@@ -903,36 +1037,28 @@
                 });
 
                 if (response.ok) {
-                    showAlert('apiKeysAlert', 'API key permanently deleted successfully!', 'success');
                     loadAPIKeys(); // Refresh the list
-                    loadAPIKeyCount(); // Update the dashboard count
+                    loadDashboardData(); // Update dashboard stats
+                    
+                    // Show success message in the API keys section
+                    const alertHtml = '<div class="alert alert-success">✅ API key deleted successfully</div>';
+                    const contentDiv = document.getElementById('apiKeysContent');
+                    contentDiv.innerHTML = alertHtml + contentDiv.innerHTML;
+                    
+                    // Remove the alert after 3 seconds
+                    setTimeout(() => {
+                        const alert = contentDiv.querySelector('.alert-success');
+                        if (alert) {
+                            alert.remove();
+                        }
+                    }, 3000);
                 } else {
                     const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to delete API key', 'error');
+                    alert(`Failed to delete API key: ${error.error || 'Unknown error'}`);
                 }
             } catch (error) {
-                console.error('Error deleting API key:', error);
-                showAlert('apiKeysAlert', 'Network error deleting API key', 'error');
-            }
-        }
-
-        async function toggleAPIKeyStatus(apiKeyId, currentStatus) {
-            try {
-                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({ active: !currentStatus })
-                });
-
-                if (response.ok) {
-                    showAlert('apiKeysAlert', `API key ${!currentStatus ? 'activated' : 'deactivated'} successfully!`, 'success');
-                    loadAPIKeys(); // Refresh the list
-                } else {
-                    const error = await response.json();
-                    showAlert('apiKeysAlert', error.error || 'Failed to update API key', 'error');
-                }
-            } catch (error) {
-                console.error('Error updating API key:', error);
-                showAlert('apiKeysAlert', 'Network error updating API key', 'error');
+                console.error('Delete API Key Error:', error);
+                alert('Network error deleting API key');
             }
         }
 
@@ -943,7 +1069,8 @@
                     loadUserCount(),
                     loadAPIKeyCount(),
                     loadCustomerCount(),
-                    loadContractCount()
+                    loadContractCount(),
+                    loadRateLimitStats()
                 ]);
             } catch (error) {
                 console.error('Error loading dashboard data:', error);
@@ -958,7 +1085,6 @@
                     document.getElementById('totalUsers').textContent = users.length;
                 }
             } catch (error) {
-                console.error('Error loading user count:', error);
                 document.getElementById('totalUsers').textContent = 'Error';
             }
         }
@@ -972,7 +1098,6 @@
                     document.getElementById('activeAPIKeys').textContent = activeKeys;
                 }
             } catch (error) {
-                console.error('Error loading API key count:', error);
                 document.getElementById('activeAPIKeys').textContent = 'Error';
             }
         }
@@ -985,7 +1110,6 @@
                     document.getElementById('totalCustomers').textContent = customers.length;
                 }
             } catch (error) {
-                console.error('Error loading customer count:', error);
                 document.getElementById('totalCustomers').textContent = 'Error';
             }
         }
@@ -998,8 +1122,41 @@
                     document.getElementById('totalContracts').textContent = contracts.length;
                 }
             } catch (error) {
-                console.error('Error loading contract count:', error);
                 document.getElementById('totalContracts').textContent = 'Error';
+            }
+        }
+
+        async function loadRateLimitStats() {
+            try {
+                const response = await apiRequest('/auth/api-keys');
+                if (response.ok) {
+                    const apiKeys = await response.json();
+                    let rateLimitedCount = 0;
+                    let totalRequests = 0;
+
+                    for (const key of apiKeys) {
+                        if (key.active) {
+                            try {
+                                const rateLimitResponse = await apiRequest(`/auth/api-keys/${key.api_key_id}/rate-limit`);
+                                if (rateLimitResponse.ok) {
+                                    const rateLimitData = await rateLimitResponse.json();
+                                    if (rateLimitData.remaining === 0) {
+                                        rateLimitedCount++;
+                                    }
+                                    totalRequests += rateLimitData.used;
+                                }
+                            } catch (error) {
+                                console.error('Error loading rate limit for key:', key.api_key_id);
+                            }
+                        }
+                    }
+
+                    document.getElementById('rateLimitedKeys').textContent = rateLimitedCount;
+                    document.getElementById('totalAPIRequests').textContent = totalRequests;
+                }
+            } catch (error) {
+                document.getElementById('rateLimitedKeys').textContent = 'Error';
+                document.getElementById('totalAPIRequests').textContent = 'Error';
             }
         }
 
@@ -1015,7 +1172,6 @@
                     document.getElementById('usersContent').innerHTML = '<div class="alert alert-error">Error loading users</div>';
                 }
             } catch (error) {
-                console.error('Error loading users:', error);
                 document.getElementById('usersContent').innerHTML = '<div class="alert alert-error">Network error loading users</div>';
             }
         }
@@ -1059,19 +1215,19 @@
                     document.getElementById('apiKeysContent').innerHTML = '<div class="alert alert-error">Error loading API keys</div>';
                 }
             } catch (error) {
-                console.error('Error loading API keys:', error);
                 document.getElementById('apiKeysContent').innerHTML = '<div class="alert alert-error">Network error loading API keys</div>';
             }
         }
 
         function displayAPIKeysTable(apiKeys) {
             const tableHtml = `
+                <div id="apiKeyAlert"></div>
                 <table class="table">
                     <thead>
                         <tr>
                             <th>Name</th>
                             <th>Prefix</th>
-                            <th>Permissions</th>
+                            <th>Rate Limit</th>
                             <th>Created By</th>
                             <th>Last Used</th>
                             <th>Usage Count</th>
@@ -1080,55 +1236,111 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${apiKeys.map(key => {
-                            // Format permissions for display
-                            let permissionsDisplay = 'None';
-                            if (key.permissions && typeof key.permissions === 'object') {
-                                const permissionsList = Object.entries(key.permissions)
-                                    .map(([resource, actions]) => `${resource}: ${Array.isArray(actions) ? actions.join(', ') : actions}`)
-                                    .join('<br>');
-                                permissionsDisplay = permissionsList || 'None';
-                            }
-                            
-                            // Handle creator display - check multiple possible field names
-                            let creatorDisplay = 'Unknown';
-                            if (key.creator && key.creator.username) {
-                                creatorDisplay = key.creator.username;
-                            } else if (key.created_by_user && key.created_by_user.username) {
-                                creatorDisplay = key.created_by_user.username;
-                            } else if (key.Creator && key.Creator.username) {
-                                creatorDisplay = key.Creator.username;
-                            }
-                            
-                            return `
+                        ${apiKeys.map(key => `
                             <tr>
                                 <td>
                                     <strong>${key.key_name}</strong>
                                     ${key.description ? `<br><small style="color: #666;">${key.description}</small>` : ''}
                                 </td>
                                 <td><code>${key.key_prefix}...</code></td>
-                                <td><small>${permissionsDisplay}</small></td>
-                                <td><strong>${creatorDisplay}</strong></td>
+                                <td>${key.rate_limit_per_hour || 1000}/hour</td>
+                                <td>${key.created_by_user ? key.created_by_user.username : 'Unknown'}</td>
                                 <td>${key.last_used ? new Date(key.last_used).toLocaleString() : 'Never'}</td>
-                                <td>${key.usage_count || 0}</td>
+                                <td>${key.usage_count}</td>
                                 <td><span class="status-badge status-${key.active ? 'active' : 'inactive'}">${key.active ? 'Active' : 'Inactive'}</span></td>
                                 <td>
-                                    <button class="btn btn-small ${key.active ? 'btn-danger' : 'btn-success'}" 
-                                            onclick="toggleAPIKeyStatus(${key.api_key_id}, ${key.active})">
-                                        ${key.active ? 'Deactivate' : 'Activate'}
+                                    <button class="btn" onclick="viewAPIKeyDetails(${key.api_key_id})" title="View Details">👁️</button>
+                                    <button class="btn btn-warning" onclick="viewRateLimit(${key.api_key_id})" title="Rate Limit">📊</button>
+                                    <button class="btn ${key.active ? 'btn-warning' : 'btn-success'}" 
+                                            onclick="toggleAPIKey(${key.api_key_id}, ${key.active})" 
+                                            title="${key.active ? 'Deactivate' : 'Activate'}">
+                                        ${key.active ? '⏸️' : '▶️'}
                                     </button>
-                                    <button class="btn btn-small btn-danger" 
-                                            onclick="deleteAPIKey(${key.api_key_id}, '${key.key_name.replace(/'/g, "\\'")}')">
-                                        Delete
-                                    </button>
+                                    <button class="btn btn-danger" onclick="deleteAPIKey(${key.api_key_id}, '${key.key_name}')" title="Delete">🗑️</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${apiKeys.length === 0 ? '<div class="alert alert-warning">No API keys found. Create your first API key using the form above.</div>' : ''}
+            `;
+            document.getElementById('apiKeysContent').innerHTML = tableHtml;
+        }
+
+        async function loadRateLimits() {
+            document.getElementById('rateLimitsContent').innerHTML = '<div class="loading">Loading rate limits...</div>';
+            try {
+                const response = await apiRequest('/auth/api-keys');
+                if (response.ok) {
+                    const apiKeys = await response.json();
+                    await displayRateLimitsTable(apiKeys);
+                } else {
+                    document.getElementById('rateLimitsContent').innerHTML = '<div class="alert alert-error">Error loading rate limits</div>';
+                }
+            } catch (error) {
+                document.getElementById('rateLimitsContent').innerHTML = '<div class="alert alert-error">Network error loading rate limits</div>';
+            }
+        }
+
+        async function displayRateLimitsTable(apiKeys) {
+            let tableRows = '';
+
+            for (const key of apiKeys.filter(k => k.active)) {
+                try {
+                    const rateLimitResponse = await apiRequest(`/auth/api-keys/${key.api_key_id}/rate-limit`);
+                    if (rateLimitResponse.ok) {
+                        const rateLimitData = await rateLimitResponse.json();
+                        const usagePercent = Math.round((rateLimitData.used / rateLimitData.limit) * 100);
+                        const statusClass = usagePercent >= 90 ? 'status-limited' : usagePercent >= 70 ? 'status-warning' : 'status-active';
+                        const resetTime = new Date(rateLimitData.reset_at * 1000);
+
+                        tableRows += `
+                            <tr>
+                                <td>${key.key_name}</td>
+                                <td><code>${key.key_prefix}...</code></td>
+                                <td>
+                                    <div class="rate-limit-info">
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span>${rateLimitData.used}/${rateLimitData.limit}</span>
+                                            <span>${rateLimitData.remaining} remaining</span>
+                                        </div>
+                                        <div class="rate-limit-bar">
+                                            <div class="rate-limit-fill ${usagePercent >= 90 ? 'rate-limit-danger' : usagePercent >= 70 ? 'rate-limit-warning' : 'rate-limit-ok'}"
+                                                 style="width: ${Math.min(usagePercent, 100)}%"></div>
+                                        </div>
+                                        <small>Resets: ${resetTime.toLocaleTimeString()}</small>
+                                    </div>
+                                </td>
+                                <td><span class="status-badge ${statusClass}">${usagePercent}%</span></td>
+                                <td>
+                                    <button class="btn" onclick="viewAPIKeyUsage(${key.api_key_id})">View Usage</button>
+                                    <button class="btn btn-warning" onclick="viewUsageLogs(${key.api_key_id})">Logs</button>
                                 </td>
                             </tr>
                         `;
-                        }).join('')}
+                    }
+                } catch (error) {
+                    console.error('Error loading rate limit for key:', key.api_key_id);
+                }
+            }
+
+            const tableHtml = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>API Key Name</th>
+                            <th>Prefix</th>
+                            <th>Usage (Current Hour)</th>
+                            <th>Usage %</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
                     </tbody>
                 </table>
             `;
-            document.getElementById('apiKeysContent').innerHTML = tableHtml;
+            document.getElementById('rateLimitsContent').innerHTML = tableHtml;
         }
 
         async function loadCustomers() {
@@ -1142,7 +1354,6 @@
                     document.getElementById('customersContent').innerHTML = '<div class="alert alert-error">Error loading customers</div>';
                 }
             } catch (error) {
-                console.error('Error loading customers:', error);
                 document.getElementById('customersContent').innerHTML = '<div class="alert alert-error">Network error loading customers</div>';
             }
         }
@@ -1186,7 +1397,6 @@
                     document.getElementById('contractsContent').innerHTML = '<div class="alert alert-error">Error loading contracts</div>';
                 }
             } catch (error) {
-                console.error('Error loading contracts:', error);
                 document.getElementById('contractsContent').innerHTML = '<div class="alert alert-error">Network error loading contracts</div>';
             }
         }
@@ -1224,7 +1434,7 @@
             try {
                 const response = await fetch(`${API_BASE}/health`);
                 const health = await response.json();
-                
+
                 const statusColor = health.status === 'healthy' ? '#38a169' : '#e53e3e';
                 const healthHtml = `
                     <div style="padding: 20px; border-radius: 8px; background: white; border-left: 4px solid ${statusColor};">
@@ -1238,9 +1448,448 @@
                 `;
                 document.getElementById('healthContent').innerHTML = healthHtml;
             } catch (error) {
-                console.error('Error checking health:', error);
                 document.getElementById('healthContent').innerHTML = '<div class="alert alert-error">Error checking system health</div>';
             }
+        }
+
+        // Rate limiting specific functions
+        async function viewRateLimit(apiKeyId) {
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}/rate-limit`);
+                if (response.ok) {
+                    const rateLimitData = await response.json();
+                    const resetTime = new Date(rateLimitData.reset_at * 1000);
+                    const usagePercent = Math.round((rateLimitData.used / rateLimitData.limit) * 100);
+
+                    const content = `
+                        <div class="rate-limit-info">
+                            <h4>Current Rate Limit Status</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                                <div>
+                                    <label>Hourly Limit:</label>
+                                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${rateLimitData.limit}</div>
+                                </div>
+                                <div>
+                                    <label>Used This Hour:</label>
+                                    <div style="font-size: 24px; font-weight: bold; color: ${usagePercent >= 90 ? '#e53e3e' : '#38a169'};">${rateLimitData.used}</div>
+                                </div>
+                                <div>
+                                    <label>Remaining:</label>
+                                    <div style="font-size: 24px; font-weight: bold; color: #667eea;">${rateLimitData.remaining}</div>
+                                </div>
+                                <div>
+                                    <label>Resets At:</label>
+                                    <div style="font-size: 18px; font-weight: bold;">${resetTime.toLocaleTimeString()}</div>
+                                </div>
+                            </div>
+                            <div class="rate-limit-bar" style="height: 20px; margin: 20px 0;">
+                                <div class="rate-limit-fill ${usagePercent >= 90 ? 'rate-limit-danger' : usagePercent >= 70 ? 'rate-limit-warning' : 'rate-limit-ok'}"
+                                     style="width: ${Math.min(usagePercent, 100)}%; height: 100%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                    ${usagePercent}%
+                                </div>
+                            </div>
+                            ${usagePercent >= 90 ? '<div class="alert alert-warning">⚠️ API key is approaching rate limit!</div>' : ''}
+                            ${rateLimitData.remaining === 0 ? '<div class="alert alert-error">🚫 API key has reached rate limit and is temporarily blocked!</div>' : ''}
+                        </div>
+                    `;
+                    showModal('Rate Limit Details', content);
+                } else {
+                    showModal('Error', '<div class="alert alert-error">Failed to load rate limit data</div>');
+                }
+            } catch (error) {
+                showModal('Error', '<div class="alert alert-error">Network error loading rate limit data</div>');
+            }
+        }
+
+        async function viewAPIKeyUsage(apiKeyId) {
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}/usage-stats?days=7`);
+                if (response.ok) {
+                    const usageData = await response.json();
+
+                    const content = `
+                        <h4>API Key Usage Statistics (Last 7 Days)</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0;">
+                            <div class="stat-card">
+                                <div class="stat-number">${usageData.total_requests}</div>
+                                <div class="stat-label">Total Requests</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${Math.round(usageData.success_rate * 100)}%</div>
+                                <div class="stat-label">Success Rate</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${Math.round(usageData.avg_response_time_ms)}ms</div>
+                                <div class="stat-label">Avg Response Time</div>
+                            </div>
+                        </div>
+
+                        <h5>Top Endpoints</h5>
+                        <table class="table">
+                            <thead>
+                                <tr><th>Endpoint</th><th>Method</th><th>Count</th><th>Avg Time</th></tr>
+                            </thead>
+                            <tbody>
+                                ${usageData.top_endpoints.map(endpoint => `
+                                    <tr>
+                                        <td>${endpoint.endpoint}</td>
+                                        <td><span class="status-badge">${endpoint.method}</span></td>
+                                        <td>${endpoint.count}</td>
+                                        <td>${Math.round(endpoint.avg_response_time_ms)}ms</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+
+                        ${usageData.error_summary.length > 0 ? `
+                            <h5>Error Summary</h5>
+                            <table class="table">
+                                <thead>
+                                    <tr><th>Status Code</th><th>Count</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${usageData.error_summary.map(error => `
+                                        <tr>
+                                            <td><span class="status-badge status-inactive">${error.status_code}</span></td>
+                                            <td>${error.count}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : ''}
+                    `;
+                    showModal(`Usage Statistics - ${usageData.key_name}`, content);
+                } else {
+                    showModal('Error', '<div class="alert alert-error">Failed to load usage statistics</div>');
+                }
+            } catch (error) {
+                showModal('Error', '<div class="alert alert-error">Network error loading usage statistics</div>');
+            }
+        }
+
+        async function viewUsageLogs(apiKeyId) {
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}/logs?limit=50`);
+                if (response.ok) {
+                    const logsData = await response.json();
+
+                    const content = `
+                        <h4>Recent API Usage Logs (Last 50 requests)</h4>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Endpoint</th>
+                                        <th>Method</th>
+                                        <th>Status</th>
+                                        <th>Response Time</th>
+                                        <th>IP Address</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${logsData.logs.map(log => `
+                                        <tr>
+                                            <td>${new Date(log.created_at).toLocaleTimeString()}</td>
+                                            <td><code>${log.endpoint}</code></td>
+                                            <td><span class="status-badge">${log.method}</span></td>
+                                            <td><span class="status-badge status-${log.response_status >= 200 && log.response_status < 300 ? 'active' : 'inactive'}">${log.response_status}</span></td>
+                                            <td>${log.response_time_ms || 0}ms</td>
+                                            <td>${log.ip_address || 'N/A'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top: 15px; color: #666;">
+                            Showing ${logsData.logs.length} of ${logsData.total} total requests
+                        </div>
+                    `;
+                    showModal('Usage Logs', content);
+                } else {
+                    showModal('Error', '<div class="alert alert-error">Failed to load usage logs</div>');
+                }
+            } catch (error) {
+                showModal('Error', '<div class="alert alert-error">Network error loading usage logs</div>');
+            }
+        }
+
+        async function viewAPIKeyDetails(apiKeyId) {
+            try {
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`);
+                if (response.ok) {
+                    const apiKey = await response.json();
+
+                    const content = `
+                        <h4>API Key Details</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                            <div>
+                                <label><strong>Name:</strong></label>
+                                <div>${apiKey.key_name}</div>
+                            </div>
+                            <div>
+                                <label><strong>Prefix:</strong></label>
+                                <div><code>${apiKey.key_prefix}...</code></div>
+                            </div>
+                            <div>
+                                <label><strong>Rate Limit:</strong></label>
+                                <div>${apiKey.rate_limit_per_hour}/hour</div>
+                            </div>
+                            <div>
+                                <label><strong>Status:</strong></label>
+                                <div><span class="status-badge status-${apiKey.active ? 'active' : 'inactive'}">${apiKey.active ? 'Active' : 'Inactive'}</span></div>
+                            </div>
+                            <div>
+                                <label><strong>Created:</strong></label>
+                                <div>${new Date(apiKey.created_at).toLocaleDateString()}</div>
+                            </div>
+                            <div>
+                                <label><strong>Last Used:</strong></label>
+                                <div>${apiKey.last_used ? new Date(apiKey.last_used).toLocaleString() : 'Never'}</div>
+                            </div>
+                            <div>
+                                <label><strong>Total Usage:</strong></label>
+                                <div>${apiKey.usage_count} requests</div>
+                            </div>
+                            <div>
+                                <label><strong>Expires:</strong></label>
+                                <div>${apiKey.expires_at ? new Date(apiKey.expires_at).toLocaleDateString() : 'Never'}</div>
+                            </div>
+                        </div>
+
+                        ${apiKey.description ? `
+                            <div style="margin: 20px 0;">
+                                <label><strong>Description:</strong></label>
+                                <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 5px;">${apiKey.description}</div>
+                            </div>
+                        ` : ''}
+
+                        <div style="margin: 20px 0;">
+                            <label><strong>Permissions:</strong></label>
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 5px;">
+                                <pre style="margin: 0; font-size: 12px;">${JSON.stringify(apiKey.permissions, null, 2)}</pre>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 20px;">
+                            <button class="btn" onclick="viewRateLimit(${apiKey.api_key_id})">View Rate Limit</button>
+                            <button class="btn btn-warning" onclick="viewAPIKeyUsage(${apiKey.api_key_id})">View Usage Stats</button>
+                            <button class="btn ${apiKey.active ? 'btn-warning' : 'btn-success'}" 
+                                    onclick="toggleAPIKey(${apiKey.api_key_id}, ${apiKey.active}); closeModal();">
+                                ${apiKey.active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteAPIKey(${apiKey.api_key_id}, '${apiKey.key_name}'); closeModal();">Delete</button>
+                        </div>
+                    `;
+                    showModal(`API Key: ${apiKey.key_name}`, content);
+                } else {
+                    showModal('Error', '<div class="alert alert-error">Failed to load API key details</div>');
+                }
+            } catch (error) {
+                showModal('Error', '<div class="alert alert-error">Network error loading API key details</div>');
+            }
+        }
+
+        async function loadRateLimitAnalytics() {
+            const content = `
+                <h4>Rate Limit Analytics</h4>
+                <div class="loading">Loading comprehensive rate limit analytics...</div>
+                <div id="analyticsContent"></div>
+            `;
+            showModal('Rate Limit Analytics', content);
+
+            try {
+                const response = await apiRequest('/auth/api-keys');
+                if (response.ok) {
+                    const apiKeys = await response.json();
+                    let analyticsData = {
+                        totalKeys: apiKeys.length,
+                        activeKeys: apiKeys.filter(k => k.active).length,
+                        rateLimitedKeys: 0,
+                        totalRequests: 0,
+                        highUsageKeys: []
+                    };
+
+                    for (const key of apiKeys.filter(k => k.active)) {
+                        try {
+                            const rateLimitResponse = await apiRequest(`/auth/api-keys/${key.api_key_id}/rate-limit`);
+                            if (rateLimitResponse.ok) {
+                                const rateLimitData = await rateLimitResponse.json();
+                                const usagePercent = (rateLimitData.used / rateLimitData.limit) * 100;
+
+                                analyticsData.totalRequests += rateLimitData.used;
+
+                                if (rateLimitData.remaining === 0) {
+                                    analyticsData.rateLimitedKeys++;
+                                }
+
+                                if (usagePercent >= 70) {
+                                    analyticsData.highUsageKeys.push({
+                                        name: key.key_name,
+                                        usagePercent: Math.round(usagePercent),
+                                        used: rateLimitData.used,
+                                        limit: rateLimitData.limit
+                                    });
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error loading analytics for key:', key.api_key_id);
+                        }
+                    }
+
+                    const analyticsHtml = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
+                            <div class="stat-card">
+                                <div class="stat-number">${analyticsData.activeKeys}</div>
+                                <div class="stat-label">Active API Keys</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${analyticsData.rateLimitedKeys}</div>
+                                <div class="stat-label">Rate Limited</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${analyticsData.totalRequests}</div>
+                                <div class="stat-label">Total Requests (1h)</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${analyticsData.highUsageKeys.length}</div>
+                                <div class="stat-label">High Usage (>70%)</div>
+                            </div>
+                        </div>
+
+                        ${analyticsData.highUsageKeys.length > 0 ? `
+                            <h5>High Usage API Keys (>70%)</h5>
+                            <table class="table">
+                                <thead>
+                                    <tr><th>API Key</th><th>Usage</th><th>Percentage</th></tr>
+                                </thead>
+                                <tbody>
+                                    ${analyticsData.highUsageKeys.map(key => `
+                                        <tr>
+                                            <td>${key.name}</td>
+                                            <td>${key.used}/${key.limit}</td>
+                                            <td><span class="status-badge ${key.usagePercent >= 90 ? 'status-limited' : 'status-warning'}">${key.usagePercent}%</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        ` : '<div class="alert alert-success">✅ All API keys are operating within normal usage limits</div>'}
+
+                        <div style="margin-top: 20px;">
+                            <button class="btn" onclick="loadRateLimits(); closeModal();">Refresh Rate Limits</button>
+                        </div>
+                    `;
+
+                    document.getElementById('analyticsContent').innerHTML = analyticsHtml;
+                } else {
+                    document.getElementById('analyticsContent').innerHTML = '<div class="alert alert-error">Failed to load analytics data</div>';
+                }
+            } catch (error) {
+                document.getElementById('analyticsContent').innerHTML = '<div class="alert alert-error">Network error loading analytics</div>';
+            }
+        }
+
+        async function loadAPIKeyUsageReport() {
+            const content = `
+                <h4>API Key Usage Report</h4>
+                <div class="loading">Generating comprehensive usage report...</div>
+                <div id="usageReportContent"></div>
+            `;
+            showModal('API Key Usage Report', content);
+
+            try {
+                const response = await apiRequest('/auth/api-keys');
+                if (response.ok) {
+                    const apiKeys = await response.json();
+                    let reportData = {
+                        totalKeys: apiKeys.length,
+                        activeKeys: apiKeys.filter(k => k.active).length,
+                        inactiveKeys: apiKeys.filter(k => !k.active).length,
+                        totalUsage: 0,
+                        keyDetails: []
+                    };
+
+                    for (const key of apiKeys) {
+                        reportData.totalUsage += key.usage_count;
+                        reportData.keyDetails.push({
+                            name: key.key_name,
+                            active: key.active,
+                            usage: key.usage_count,
+                            rateLimit: key.rate_limit_per_hour,
+                            created: key.created_at,
+                            lastUsed: key.last_used
+                        });
+                    }
+
+                    // Sort by usage count descending
+                    reportData.keyDetails.sort((a, b) => b.usage - a.usage);
+
+                    const reportHtml = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0;">
+                            <div class="stat-card">
+                                <div class="stat-number">${reportData.totalKeys}</div>
+                                <div class="stat-label">Total Keys</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${reportData.activeKeys}</div>
+                                <div class="stat-label">Active Keys</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${reportData.inactiveKeys}</div>
+                                <div class="stat-label">Inactive Keys</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-number">${reportData.totalUsage.toLocaleString()}</div>
+                                <div class="stat-label">Total API Calls</div>
+                            </div>
+                        </div>
+
+                        <h5>All API Keys (Sorted by Usage)</h5>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Status</th>
+                                        <th>Total Usage</th>
+                                        <th>Rate Limit</th>
+                                        <th>Created</th>
+                                        <th>Last Used</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${reportData.keyDetails.map(key => `
+                                        <tr>
+                                            <td>${key.name}</td>
+                                            <td><span class="status-badge status-${key.active ? 'active' : 'inactive'}">${key.active ? 'Active' : 'Inactive'}</span></td>
+                                            <td><strong>${key.usage.toLocaleString()}</strong></td>
+                                            <td>${key.rateLimit}/hour</td>
+                                            <td>${new Date(key.created).toLocaleDateString()}</td>
+                                            <td>${key.lastUsed ? new Date(key.lastUsed).toLocaleDateString() : 'Never'}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="margin-top: 20px;">
+                            <button class="btn" onclick="exportUsageReport()">📊 Export Report</button>
+                            <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+                        </div>
+                    `;
+
+                    document.getElementById('usageReportContent').innerHTML = reportHtml;
+                } else {
+                    document.getElementById('usageReportContent').innerHTML = '<div class="alert alert-error">Failed to load usage report</div>';
+                }
+            } catch (error) {
+                document.getElementById('usageReportContent').innerHTML = '<div class="alert alert-error">Network error loading usage report</div>';
+            }
+        }
+
+        function exportUsageReport() {
+            // Simple CSV export functionality
+            alert('Export functionality would generate a CSV report with detailed API key usage statistics.');
         }
 
         // Utility functions

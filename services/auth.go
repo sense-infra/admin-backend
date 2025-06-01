@@ -26,6 +26,8 @@ var (
 	ErrAPIKeyInactive     = errors.New("API key is inactive")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrSessionExpired     = errors.New("session has expired")
+	ErrRateLimitExceeded  = errors.New("API key rate limit exceeded")
+	ErrRateLimitCheck     = errors.New("failed to check rate limit")
 )
 
 type AuthService struct {
@@ -39,6 +41,13 @@ type JWTClaims struct {
 	RoleID    int    `json:"role_id"`
 	SessionID string `json:"session_id"`
 	jwt.RegisteredClaims
+}
+
+type RateLimitInfo struct {
+	Limit     int   `json:"limit"`
+	Used      int   `json:"used"`
+	Remaining int   `json:"remaining"`
+	ResetAt   int64 `json:"reset_at"` // Unix timestamp
 }
 
 func NewAuthService(db *sqlx.DB, jwtSecret string) *AuthService {
@@ -204,7 +213,12 @@ func (a *AuthService) ValidateAPIKey(keyString string) (*models.AuthContext, err
 		return nil, ErrAPIKeyExpired
 	}
 
-	// Update API key usage
+	// *** NEW: Check rate limit BEFORE allowing the request ***
+	if err := a.checkRateLimit(apiKey.APIKeyID, apiKey.RateLimitPerHour); err != nil {
+		return nil, err
+	}
+
+	// Update API key usage (this increments the counter)
 	if err := a.updateAPIKeyUsage(apiKey.APIKeyID); err != nil {
 		return nil, fmt.Errorf("failed to update API key usage: %w", err)
 	}
@@ -215,6 +229,73 @@ func (a *AuthService) ValidateAPIKey(keyString string) (*models.AuthContext, err
 		Permissions: apiKey.Permissions,
 		IsAPIKey:    true,
 	}, nil
+}
+
+// New method: Check if API key has exceeded its rate limit
+func (a *AuthService) checkRateLimit(apiKeyID int, rateLimit int) error {
+	// Get usage count for the current hour
+	query := `
+		SELECT COUNT(*) as usage_count
+		FROM API_Key_Usage_Log 
+		WHERE api_key_id = ? 
+		AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+	`
+	
+	var usageCount int
+	err := a.db.QueryRow(query, apiKeyID).Scan(&usageCount)
+	if err != nil {
+		return fmt.Errorf("failed to check rate limit: %w", err)
+	}
+
+	if usageCount >= rateLimit {
+		return ErrRateLimitExceeded
+	}
+
+	return nil
+}
+
+// New method: Get rate limit information for an API key
+func (a *AuthService) GetRateLimitInfo(apiKeyID int) (*RateLimitInfo, error) {
+	// Get API key to get the rate limit
+	apiKey, err := a.getAPIKeyByID(apiKeyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get API key: %w", err)
+	}
+
+	// Get usage count for the current hour
+	query := `
+		SELECT COUNT(*) as usage_count
+		FROM API_Key_Usage_Log 
+		WHERE api_key_id = ? 
+		AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+	`
+	
+	var usageCount int
+	err = a.db.QueryRow(query, apiKeyID).Scan(&usageCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get usage count: %w", err)
+	}
+
+	// Calculate reset time (next hour boundary)
+	now := time.Now()
+	resetAt := time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location())
+
+	remaining := apiKey.RateLimitPerHour - usageCount
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	return &RateLimitInfo{
+		Limit:     apiKey.RateLimitPerHour,
+		Used:      usageCount,
+		Remaining: remaining,
+		ResetAt:   resetAt.Unix(),
+	}, nil
+}
+
+// GetAPIKeyByID returns an API key by ID (public method)
+func (a *AuthService) GetAPIKeyByID(apiKeyID int) (*models.APIKey, error) {
+	return a.getAPIKeyByID(apiKeyID)
 }
 
 // ChangePassword changes a user's password
