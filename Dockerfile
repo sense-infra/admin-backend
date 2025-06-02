@@ -13,6 +13,7 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY app/servicebin /app/servicebin
+COPY web /web
 
 # Change ownership
 RUN chown -R app:app /app
