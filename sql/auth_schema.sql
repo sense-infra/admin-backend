@@ -1,6 +1,6 @@
 -- =========================================
 -- AUTHENTICATION & AUTHORIZATION SCHEMA
--- Enhanced with Rate Limiting Support
+-- Complete schema with rate limiting support for fresh DB initialization
 -- =========================================
 
 -- User_Role Table
@@ -69,7 +69,7 @@ CREATE TABLE User_Session (
 );
 
 -- API_Key Table
--- Purpose: Manage API keys for external access with rate limiting support
+-- Purpose: Manage API keys for external access (moved from config to DB)
 CREATE TABLE API_Key (
     api_key_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the API key',
     key_name VARCHAR(100) NOT NULL COMMENT 'Human-readable name for the API key',
@@ -79,9 +79,7 @@ CREATE TABLE API_Key (
     -- Permissions and scope
     permissions JSON NOT NULL COMMENT 'JSON object defining API permissions',
     contract_access JSON COMMENT 'JSON array of contract IDs this key can access (NULL = all)',
-    
-    -- Rate limiting configuration
-    rate_limit_per_hour INT DEFAULT 1000 COMMENT 'API calls per hour limit for rate limiting',
+    rate_limit_per_hour INT DEFAULT 1000 COMMENT 'API calls per hour limit',
     
     -- Key metadata
     created_by INT NOT NULL COMMENT 'User who created this API key',
@@ -105,11 +103,11 @@ CREATE TABLE API_Key (
     INDEX idx_created_by (created_by),
     INDEX idx_active (active),
     INDEX idx_expires_at (expires_at),
-    INDEX idx_rate_limit (rate_limit_per_hour)
+    INDEX idx_active_rate_limit (active, rate_limit_per_hour)
 );
 
 -- API_Key_Usage_Log Table
--- Purpose: Log API key usage for rate limiting, monitoring and analytics
+-- Purpose: Log API key usage for monitoring and analytics
 CREATE TABLE API_Key_Usage_Log (
     log_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the log entry',
     api_key_id INT NOT NULL COMMENT 'Reference to the API key used',
@@ -121,25 +119,221 @@ CREATE TABLE API_Key_Usage_Log (
     response_time_ms INT COMMENT 'Response time in milliseconds',
     request_size_bytes INT COMMENT 'Size of request in bytes',
     response_size_bytes INT COMMENT 'Size of response in bytes',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'When the API call was made',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (api_key_id) REFERENCES API_Key(api_key_id),
     
-    -- Standard indexes for analytics
     INDEX idx_api_key_id (api_key_id),
     INDEX idx_created_at (created_at),
     INDEX idx_endpoint (endpoint),
     INDEX idx_response_status (response_status),
-    
-    -- CRITICAL INDEX FOR RATE LIMITING PERFORMANCE
-    -- This composite index is essential for fast rate limit queries
-    INDEX idx_api_key_created_at (api_key_id, created_at),
-    
-    -- Additional indexes for common analytics queries
-    INDEX idx_api_key_method (api_key_id, method),
-    INDEX idx_api_key_status (api_key_id, response_status),
-    INDEX idx_endpoint_method (endpoint, method)
+    INDEX idx_api_usage_key_time (api_key_id, created_at),
+    INDEX idx_api_usage_time_status (created_at, response_status)
 );
+
+-- System_Log Table
+-- Purpose: System logging for admin actions and rate limiting events
+CREATE TABLE System_Log (
+    log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    log_level ENUM('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL') NOT NULL,
+    component VARCHAR(50) NOT NULL,
+    message TEXT NOT NULL,
+    metadata JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_log_level (log_level),
+    INDEX idx_component (component),
+    INDEX idx_created_at (created_at)
+);
+
+-- =========================================
+-- RATE LIMITING VIEWS AND PROCEDURES
+-- =========================================
+
+-- View for API Key Usage in Last Hour
+-- This provides real-time rate limiting data
+CREATE VIEW API_Key_Usage_Last_Hour AS
+SELECT 
+    ak.api_key_id,
+    ak.key_name,
+    ak.key_prefix,
+    ak.rate_limit_per_hour,
+    ak.active,
+    COUNT(ul.log_id) as usage_last_hour,
+    ak.rate_limit_per_hour - COUNT(ul.log_id) as remaining_requests,
+    CASE 
+        WHEN COUNT(ul.log_id) >= ak.rate_limit_per_hour THEN TRUE 
+        ELSE FALSE 
+    END as is_rate_limited,
+    CASE 
+        WHEN COUNT(ul.log_id) >= ak.rate_limit_per_hour * 0.9 THEN TRUE 
+        ELSE FALSE 
+    END as approaching_limit,
+    MAX(ul.created_at) as last_request_time
+FROM API_Key ak
+LEFT JOIN API_Key_Usage_Log ul ON ak.api_key_id = ul.api_key_id 
+    AND ul.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+WHERE ak.active = TRUE
+GROUP BY ak.api_key_id, ak.key_name, ak.key_prefix, ak.rate_limit_per_hour, ak.active;
+
+-- View for API Key Usage Statistics (extended with rate limiting info)
+CREATE VIEW API_Key_Usage_Stats AS
+SELECT 
+    ak.api_key_id,
+    ak.key_name,
+    ak.key_prefix,
+    ak.rate_limit_per_hour,
+    ak.active,
+    ak.created_at as key_created,
+    ak.last_used,
+    ak.usage_count,
+    
+    -- Usage in different time periods
+    COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN 1 END) as usage_last_hour,
+    COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 END) as usage_last_24h,
+    COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) as usage_last_7d,
+    COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) as usage_last_30d,
+    
+    -- Success/Error rates
+    COUNT(CASE WHEN ul.response_status >= 200 AND ul.response_status < 300 THEN 1 END) as successful_requests,
+    COUNT(CASE WHEN ul.response_status >= 400 THEN 1 END) as error_requests,
+    COUNT(CASE WHEN ul.response_status = 429 THEN 1 END) as rate_limited_requests,
+    
+    -- Performance metrics
+    AVG(ul.response_time_ms) as avg_response_time_ms,
+    MAX(ul.response_time_ms) as max_response_time_ms,
+    MIN(ul.response_time_ms) as min_response_time_ms,
+    
+    -- Rate limiting status
+    ak.rate_limit_per_hour - COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN 1 END) as remaining_requests_this_hour,
+    CASE 
+        WHEN COUNT(CASE WHEN ul.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN 1 END) >= ak.rate_limit_per_hour THEN TRUE 
+        ELSE FALSE 
+    END as currently_rate_limited,
+    
+    -- Most recent activity
+    MAX(ul.created_at) as last_request_time,
+    COUNT(DISTINCT DATE(ul.created_at)) as active_days,
+    
+    -- Creator info
+    creator.username as created_by_username
+    
+FROM API_Key ak
+LEFT JOIN API_Key_Usage_Log ul ON ak.api_key_id = ul.api_key_id
+LEFT JOIN System_User creator ON ak.created_by = creator.user_id
+GROUP BY ak.api_key_id, ak.key_name, ak.key_prefix, ak.rate_limit_per_hour, 
+         ak.active, ak.created_at, ak.last_used, ak.usage_count, creator.username;
+
+-- =========================================
+-- STORED PROCEDURES
+-- =========================================
+
+DELIMITER //
+
+-- Procedure to check if API key can make a request (used by application)
+CREATE PROCEDURE CheckAPIKeyRateLimit(
+    IN p_api_key_id INT,
+    OUT p_can_proceed BOOLEAN,
+    OUT p_usage_count INT,
+    OUT p_rate_limit INT,
+    OUT p_remaining INT
+)
+BEGIN
+    DECLARE v_usage_last_hour INT DEFAULT 0;
+    DECLARE v_rate_limit_per_hour INT DEFAULT 1000;
+    
+    -- Get the API key's rate limit
+    SELECT rate_limit_per_hour 
+    INTO v_rate_limit_per_hour
+    FROM API_Key 
+    WHERE api_key_id = p_api_key_id AND active = TRUE;
+    
+    -- Get usage in the last hour
+    SELECT COUNT(*) 
+    INTO v_usage_last_hour
+    FROM API_Key_Usage_Log 
+    WHERE api_key_id = p_api_key_id 
+    AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR);
+    
+    -- Set output parameters
+    SET p_usage_count = v_usage_last_hour;
+    SET p_rate_limit = v_rate_limit_per_hour;
+    SET p_remaining = v_rate_limit_per_hour - v_usage_last_hour;
+    SET p_can_proceed = (v_usage_last_hour < v_rate_limit_per_hour);
+END //
+
+-- Procedure to get rate limiting info for all API keys (for admin dashboard)
+CREATE PROCEDURE GetAllAPIKeyRateLimitStatus()
+BEGIN
+    SELECT 
+        ak.api_key_id,
+        ak.key_name,
+        ak.key_prefix,
+        ak.rate_limit_per_hour,
+        ak.active,
+        COALESCE(usage_stats.usage_last_hour, 0) as usage_last_hour,
+        ak.rate_limit_per_hour - COALESCE(usage_stats.usage_last_hour, 0) as remaining_requests,
+        CASE 
+            WHEN COALESCE(usage_stats.usage_last_hour, 0) >= ak.rate_limit_per_hour THEN 'RATE_LIMITED'
+            WHEN COALESCE(usage_stats.usage_last_hour, 0) >= ak.rate_limit_per_hour * 0.9 THEN 'APPROACHING_LIMIT'
+            WHEN COALESCE(usage_stats.usage_last_hour, 0) >= ak.rate_limit_per_hour * 0.5 THEN 'MODERATE_USAGE'
+            ELSE 'LOW_USAGE'
+        END as status,
+        COALESCE(usage_stats.last_request_time, NULL) as last_request_time,
+        ak.last_used,
+        ak.usage_count as total_usage_count,
+        creator.username as created_by_username
+    FROM API_Key ak
+    LEFT JOIN (
+        SELECT 
+            api_key_id,
+            COUNT(*) as usage_last_hour,
+            MAX(created_at) as last_request_time
+        FROM API_Key_Usage_Log 
+        WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        GROUP BY api_key_id
+    ) usage_stats ON ak.api_key_id = usage_stats.api_key_id
+    LEFT JOIN System_User creator ON ak.created_by = creator.user_id
+    WHERE ak.active = TRUE
+    ORDER BY usage_stats.usage_last_hour DESC, ak.key_name;
+END //
+
+-- Procedure to clean expired sessions
+CREATE PROCEDURE CleanExpiredSessions()
+BEGIN
+    DELETE FROM User_Session WHERE expires_at < NOW();
+END //
+
+-- Procedure to clean old API usage logs (keep 90 days)
+CREATE PROCEDURE CleanOldAPILogs()
+BEGIN
+    DELETE FROM API_Key_Usage_Log WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY);
+END //
+
+-- Procedure to clean up old rate limiting data (run daily)
+CREATE PROCEDURE CleanupRateLimitingData()
+BEGIN
+    DECLARE v_deleted_logs INT DEFAULT 0;
+    
+    -- Delete API usage logs older than 90 days (keeping recent data for analytics)
+    DELETE FROM API_Key_Usage_Log 
+    WHERE created_at < DATE_SUB(NOW(), INTERVAL 90 DAY);
+    
+    -- Get count of deleted records
+    SET v_deleted_logs = ROW_COUNT();
+    
+    -- Log the cleanup operation
+    INSERT INTO System_Log (log_level, component, message, metadata, created_at)
+    VALUES (
+        'INFO', 
+        'RATE_LIMITING', 
+        'Cleaned up old API usage logs',
+        JSON_OBJECT('deleted_records', v_deleted_logs),
+        NOW()
+    );
+END //
+
+DELIMITER ;
 
 -- =========================================
 -- INSERT DEFAULT ROLES
@@ -148,7 +342,7 @@ CREATE TABLE API_Key_Usage_Log (
 INSERT INTO User_Role (name, description, permissions) VALUES 
 (
     'admin',
-    'Administrator with full system access including rate limit management',
+    'Administrator with full system access',
     JSON_OBJECT(
         'users', JSON_ARRAY('create', 'read', 'update', 'delete'),
         'contracts', JSON_ARRAY('create', 'read', 'update', 'delete'),
@@ -157,7 +351,6 @@ INSERT INTO User_Role (name, description, permissions) VALUES
         'cameras', JSON_ARRAY('create', 'read', 'update', 'delete'),
         'events', JSON_ARRAY('create', 'read', 'update', 'delete'),
         'api_keys', JSON_ARRAY('create', 'read', 'update', 'delete'),
-        'rate_limits', JSON_ARRAY('read', 'update'),
         'rf_monitoring', JSON_ARRAY('create', 'read', 'update', 'delete'),
         'system_config', JSON_ARRAY('create', 'read', 'update', 'delete'),
         'logs', JSON_ARRAY('read')
@@ -165,7 +358,7 @@ INSERT INTO User_Role (name, description, permissions) VALUES
 ),
 (
     'viewer',
-    'Read-only access to system data including rate limit monitoring',
+    'Read-only access to system data',
     JSON_OBJECT(
         'users', JSON_ARRAY('read'),
         'contracts', JSON_ARRAY('read'),
@@ -174,21 +367,9 @@ INSERT INTO User_Role (name, description, permissions) VALUES
         'cameras', JSON_ARRAY('read'),
         'events', JSON_ARRAY('read'),
         'api_keys', JSON_ARRAY('read'),
-        'rate_limits', JSON_ARRAY('read'),
         'rf_monitoring', JSON_ARRAY('read'),
         'system_config', JSON_ARRAY('read'),
         'logs', JSON_ARRAY('read')
-    )
-),
-(
-    'api_user',
-    'Limited API access with basic permissions',
-    JSON_OBJECT(
-        'contracts', JSON_ARRAY('read'),
-        'customers', JSON_ARRAY('read'),
-        'events', JSON_ARRAY('read'),
-        'cameras', JSON_ARRAY('read'),
-        'controllers', JSON_ARRAY('read')
     )
 );
 
@@ -225,218 +406,11 @@ SELECT
 FROM User_Role ur, System_User su 
 WHERE ur.name = 'viewer' AND su.username = 'admin';
 
--- Insert default API user for demonstration
--- Default password: "APIUser2025!" (should be changed on first login)
-
-INSERT INTO System_User (username, email, password_hash, role_id, first_name, last_name, force_password_change, created_by) 
-SELECT 
-    'api_user',
-    'api@senseguard.local',
-    '$2a$12$9wK.RGH5hKrZ6wK.RGH5hOrK9wK.RGH5hKrZ6wK.RGH5hOrK9wK.RH',
-    ur.role_id,
-    'API',
-    'User',
-    TRUE,
-    su.user_id
-FROM User_Role ur, System_User su 
-WHERE ur.name = 'api_user' AND su.username = 'admin';
-
 -- =========================================
--- INSERT SAMPLE API KEYS FOR TESTING
+-- CREATE SCHEDULED EVENTS FOR CLEANUP
 -- =========================================
+-- Note: These require EVENT privilege, comment out if not available
 
--- Sample API key for testing rate limiting
--- Key: sg_testkey123456789 (for demonstration only)
--- Hash: SHA256 of the above key
-INSERT INTO API_Key (
-    key_name, 
-    key_hash, 
-    key_prefix, 
-    permissions, 
-    contract_access, 
-    rate_limit_per_hour, 
-    created_by, 
-    description,
-    active
-) 
-SELECT 
-    'Test API Key',
-    'a3f5d7b9c1e4f6a8d2b5c7e9f1a3d5b7c9e1f3a5d7b9c1e4f6a8d2b5c7e9f1a3',
-    'sg_testk',
-    JSON_OBJECT(
-        'contracts', JSON_ARRAY('read'),
-        'customers', JSON_ARRAY('read'),
-        'events', JSON_ARRAY('read')
-    ),
-    NULL,
-    10,  -- Low limit for easy testing
-    user_id,
-    'Test API key for rate limiting demonstration - DO NOT USE IN PRODUCTION',
-    TRUE
-FROM System_User WHERE username = 'admin';
-
--- Production-like API key with higher limits
-INSERT INTO API_Key (
-    key_name, 
-    key_hash, 
-    key_prefix, 
-    permissions, 
-    contract_access, 
-    rate_limit_per_hour, 
-    created_by, 
-    description,
-    active
-) 
-SELECT 
-    'Production API Key',
-    'b4g6e8c0d2f5h7j9k1m3o5q7s9u1w3y5a7c9e1g3i5k7m9o1q3s5u7w9y1a3c5',
-    'sg_prod',
-    JSON_OBJECT(
-        'contracts', JSON_ARRAY('create', 'read', 'update'),
-        'customers', JSON_ARRAY('create', 'read', 'update'),
-        'events', JSON_ARRAY('read'),
-        'cameras', JSON_ARRAY('read'),
-        'controllers', JSON_ARRAY('read')
-    ),
-    JSON_ARRAY(1, 2, 3),  -- Limited to specific contracts
-    1000,  -- Standard production limit
-    user_id,
-    'Production API key with standard rate limits',
-    TRUE
-FROM System_User WHERE username = 'admin';
-
--- =========================================
--- RATE LIMITING UTILITY PROCEDURES
--- =========================================
-
-DELIMITER //
-
--- Procedure to check current rate limit usage for an API key
-CREATE PROCEDURE GetAPIKeyRateLimit(IN p_api_key_id INT)
-BEGIN
-    DECLARE v_rate_limit INT DEFAULT 0;
-    DECLARE v_current_usage INT DEFAULT 0;
-    DECLARE v_remaining INT DEFAULT 0;
-    DECLARE v_reset_time BIGINT DEFAULT 0;
-    
-    -- Get the rate limit for the API key
-    SELECT rate_limit_per_hour INTO v_rate_limit
-    FROM API_Key 
-    WHERE api_key_id = p_api_key_id AND active = TRUE;
-    
-    -- Get current hour usage
-    SELECT COUNT(*) INTO v_current_usage
-    FROM API_Key_Usage_Log 
-    WHERE api_key_id = p_api_key_id 
-    AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR);
-    
-    -- Calculate remaining requests
-    SET v_remaining = GREATEST(0, v_rate_limit - v_current_usage);
-    
-    -- Calculate reset time (next hour boundary)
-    SET v_reset_time = UNIX_TIMESTAMP(
-        DATE_ADD(
-            DATE_FORMAT(NOW(), '%Y-%m-%d %H:00:00'), 
-            INTERVAL 1 HOUR
-        )
-    );
-    
-    -- Return results
-    SELECT 
-        p_api_key_id as api_key_id,
-        v_rate_limit as rate_limit,
-        v_current_usage as current_usage,
-        v_remaining as remaining,
-        v_reset_time as reset_time,
-        CASE 
-            WHEN v_current_usage >= v_rate_limit THEN TRUE 
-            ELSE FALSE 
-        END as is_rate_limited;
-END //
-
--- Procedure to get API key usage statistics
-CREATE PROCEDURE GetAPIKeyUsageStats(IN p_api_key_id INT, IN p_days INT)
-BEGIN
-    SELECT 
-        DATE(created_at) as usage_date,
-        COUNT(*) as total_requests,
-        COUNT(CASE WHEN response_status >= 200 AND response_status < 300 THEN 1 END) as successful_requests,
-        COUNT(CASE WHEN response_status >= 400 THEN 1 END) as error_requests,
-        AVG(COALESCE(response_time_ms, 0)) as avg_response_time,
-        COUNT(DISTINCT ip_address) as unique_ips
-    FROM API_Key_Usage_Log 
-    WHERE api_key_id = p_api_key_id 
-    AND created_at >= DATE_SUB(NOW(), INTERVAL p_days DAY)
-    GROUP BY DATE(created_at)
-    ORDER BY usage_date DESC;
-END //
-
--- Procedure to clean expired sessions
-CREATE PROCEDURE CleanExpiredSessions()
-BEGIN
-    DELETE FROM User_Session WHERE expires_at < NOW();
-    SELECT ROW_COUNT() as cleaned_sessions;
-END //
-
--- Procedure to clean old API usage logs (keep configurable days)
-CREATE PROCEDURE CleanOldAPILogs(IN p_keep_days INT DEFAULT 90)
-BEGIN
-    DELETE FROM API_Key_Usage_Log 
-    WHERE created_at < DATE_SUB(NOW(), INTERVAL p_keep_days DAY);
-    SELECT ROW_COUNT() as cleaned_log_entries;
-END //
-
--- Procedure to get top API consumers by usage
-CREATE PROCEDURE GetTopAPIConsumers(IN p_days INT DEFAULT 7, IN p_limit INT DEFAULT 10)
-BEGIN
-    SELECT 
-        ak.api_key_id,
-        ak.key_name,
-        ak.rate_limit_per_hour,
-        COUNT(ul.log_id) as total_requests,
-        COUNT(CASE WHEN ul.response_status >= 400 THEN 1 END) as error_requests,
-        AVG(COALESCE(ul.response_time_ms, 0)) as avg_response_time,
-        MAX(ul.created_at) as last_used,
-        COUNT(DISTINCT ul.ip_address) as unique_ips
-    FROM API_Key ak
-    LEFT JOIN API_Key_Usage_Log ul ON ak.api_key_id = ul.api_key_id 
-        AND ul.created_at >= DATE_SUB(NOW(), INTERVAL p_days DAY)
-    WHERE ak.active = TRUE
-    GROUP BY ak.api_key_id
-    ORDER BY total_requests DESC
-    LIMIT p_limit;
-END //
-
--- Procedure to identify potential rate limit abuse
-CREATE PROCEDURE DetectRateLimitAbuse(IN p_hours INT DEFAULT 24)
-BEGIN
-    SELECT 
-        ak.api_key_id,
-        ak.key_name,
-        ak.rate_limit_per_hour,
-        COUNT(ul.log_id) as total_requests,
-        COUNT(ul.log_id) / p_hours as avg_requests_per_hour,
-        (COUNT(ul.log_id) / p_hours) / ak.rate_limit_per_hour * 100 as usage_percentage,
-        COUNT(CASE WHEN ul.response_status = 429 THEN 1 END) as rate_limit_hits,
-        COUNT(DISTINCT ul.ip_address) as unique_ips,
-        MIN(ul.created_at) as first_request,
-        MAX(ul.created_at) as last_request
-    FROM API_Key ak
-    JOIN API_Key_Usage_Log ul ON ak.api_key_id = ul.api_key_id 
-    WHERE ul.created_at >= DATE_SUB(NOW(), INTERVAL p_hours HOUR)
-    AND ak.active = TRUE
-    GROUP BY ak.api_key_id
-    HAVING usage_percentage > 80  -- Keys using more than 80% of their limit
-    ORDER BY usage_percentage DESC;
-END //
-
-DELIMITER ;
-
--- =========================================
--- CLEANUP EVENTS
--- =========================================
-
--- Create events to run cleanup procedures daily
 CREATE EVENT IF NOT EXISTS CleanExpiredSessionsEvent
 ON SCHEDULE EVERY 1 DAY
 STARTS CURRENT_TIMESTAMP
@@ -445,139 +419,9 @@ DO CALL CleanExpiredSessions();
 CREATE EVENT IF NOT EXISTS CleanOldAPILogsEvent
 ON SCHEDULE EVERY 1 DAY
 STARTS CURRENT_TIMESTAMP
-DO CALL CleanOldAPILogs(90);  -- Keep 90 days of logs
+DO CALL CleanOldAPILogs();
 
--- =========================================
--- RATE LIMITING VIEWS FOR EASY QUERYING
--- =========================================
-
--- View for current rate limit status of all active API keys
-CREATE VIEW vw_api_key_rate_limits AS
-SELECT 
-    ak.api_key_id,
-    ak.key_name,
-    ak.rate_limit_per_hour,
-    ak.active,
-    COALESCE(current_usage.usage_count, 0) as current_hour_usage,
-    GREATEST(0, ak.rate_limit_per_hour - COALESCE(current_usage.usage_count, 0)) as remaining_requests,
-    CASE 
-        WHEN COALESCE(current_usage.usage_count, 0) >= ak.rate_limit_per_hour THEN TRUE 
-        ELSE FALSE 
-    END as is_rate_limited,
-    ak.last_used,
-    ak.usage_count as total_usage_count,
-    ak.created_at
-FROM API_Key ak
-LEFT JOIN (
-    SELECT 
-        api_key_id,
-        COUNT(*) as usage_count
-    FROM API_Key_Usage_Log
-    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-    GROUP BY api_key_id
-) current_usage ON ak.api_key_id = current_usage.api_key_id
-WHERE ak.active = TRUE;
-
--- View for API key usage summary (last 24 hours)
-CREATE VIEW vw_api_key_usage_24h AS
-SELECT 
-    ak.api_key_id,
-    ak.key_name,
-    ak.rate_limit_per_hour,
-    COUNT(ul.log_id) as requests_24h,
-    COUNT(CASE WHEN ul.response_status >= 200 AND ul.response_status < 300 THEN 1 END) as successful_requests,
-    COUNT(CASE WHEN ul.response_status >= 400 THEN 1 END) as error_requests,
-    COUNT(CASE WHEN ul.response_status = 429 THEN 1 END) as rate_limited_requests,
-    AVG(COALESCE(ul.response_time_ms, 0)) as avg_response_time,
-    COUNT(DISTINCT ul.ip_address) as unique_ips,
-    MIN(ul.created_at) as first_request_24h,
-    MAX(ul.created_at) as last_request_24h
-FROM API_Key ak
-LEFT JOIN API_Key_Usage_Log ul ON ak.api_key_id = ul.api_key_id 
-    AND ul.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-WHERE ak.active = TRUE
-GROUP BY ak.api_key_id;
-
--- =========================================
--- SAMPLE QUERIES FOR TESTING
--- =========================================
-
--- Check current rate limit status for all API keys
--- SELECT * FROM vw_api_key_rate_limits;
-
--- Get rate limit info for specific API key
--- CALL GetAPIKeyRateLimit(1);
-
--- Get usage stats for specific API key (last 7 days)
--- CALL GetAPIKeyUsageStats(1, 7);
-
--- Find top API consumers
--- CALL GetTopAPIConsumers(7, 5);
-
--- Detect potential abuse
--- CALL DetectRateLimitAbuse(24);
-
--- Manual rate limit check query (what the application uses)
--- SELECT COUNT(*) as current_usage
--- FROM API_Key_Usage_Log 
--- WHERE api_key_id = 1 
--- AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR);
-
--- =========================================
--- PERFORMANCE OPTIMIZATION NOTES
--- =========================================
-
--- CRITICAL: The composite index on (api_key_id, created_at) is essential
--- for rate limiting query performance. Without it, rate limit checks
--- will be slow and could impact API response times.
-
--- The rate limiting query pattern is:
--- SELECT COUNT(*) FROM API_Key_Usage_Log 
--- WHERE api_key_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-
--- This query benefits significantly from the composite index and should
--- execute in milliseconds even with millions of log entries.
-
--- Monitor query performance with:
--- EXPLAIN SELECT COUNT(*) FROM API_Key_Usage_Log 
--- WHERE api_key_id = 1 AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR);
-
--- =========================================
--- SCHEMA VALIDATION QUERIES
--- =========================================
-
--- Verify all tables were created successfully
-SELECT 
-    TABLE_NAME,
-    TABLE_ROWS,
-    DATA_LENGTH,
-    INDEX_LENGTH,
-    CREATE_TIME
-FROM INFORMATION_SCHEMA.TABLES 
-WHERE TABLE_SCHEMA = DATABASE() 
-AND TABLE_NAME IN ('User_Role', 'System_User', 'User_Session', 'API_Key', 'API_Key_Usage_Log')
-ORDER BY TABLE_NAME;
-
--- Verify critical indexes exist
-SELECT 
-    TABLE_NAME,
-    INDEX_NAME,
-    COLUMN_NAME,
-    SEQ_IN_INDEX
-FROM INFORMATION_SCHEMA.STATISTICS 
-WHERE TABLE_SCHEMA = DATABASE() 
-AND TABLE_NAME = 'API_Key_Usage_Log'
-AND INDEX_NAME = 'idx_api_key_created_at'
-ORDER BY SEQ_IN_INDEX;
-
--- Show sample data
-SELECT 'User Roles Created:' as info;
-SELECT role_id, name, active FROM User_Role;
-
-SELECT 'System Users Created:' as info;  
-SELECT user_id, username, email, active FROM System_User;
-
-SELECT 'API Keys Created:' as info;
-SELECT api_key_id, key_name, rate_limit_per_hour, active FROM API_Key;
-
-SELECT '✅ Authentication schema with rate limiting is ready!' as status;
+CREATE EVENT IF NOT EXISTS RateLimitingCleanupEvent
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_TIMESTAMP
+DO CALL CleanupRateLimitingData();

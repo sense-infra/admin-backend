@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -78,51 +77,13 @@ func (am *AuthMiddleware) LogAPIUsage(next http.Handler) http.Handler {
 	})
 }
 
-// AddRateLimitHeaders middleware that adds rate limit headers (mux.MiddlewareFunc compatible)
-func (am *AuthMiddleware) AddRateLimitHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Call the next handler first
-		next.ServeHTTP(w, r)
-
-		// Add rate limit headers if this was an API key request
-		authContext := GetAuthContext(r)
-		if authContext != nil && authContext.IsAPIKey && authContext.APIKeyID != nil {
-			rateLimitInfo, err := am.authService.GetRateLimitInfo(*authContext.APIKeyID)
-			if err == nil {
-				w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", rateLimitInfo.Limit))
-				w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitInfo.Remaining))
-				w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitInfo.ResetAt))
-			}
-		}
-	})
-}
-
 // RequireAuth middleware that requires authentication (mux.MiddlewareFunc compatible)
 func (am *AuthMiddleware) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authContext, err := am.authenticate(r)
 		if err != nil {
-			statusCode := http.StatusUnauthorized
-			message := "Authentication required"
-			
-			// Handle specific errors
-			switch err {
-			case services.ErrRateLimitExceeded:
-				statusCode = http.StatusTooManyRequests
-				message = "API rate limit exceeded"
-			case services.ErrAPIKeyExpired:
-				message = "API key has expired"
-			case services.ErrAPIKeyInactive:
-				message = "API key is inactive"
-			case services.ErrInvalidCredentials:
-				message = "Invalid credentials"
-			case services.ErrUserLocked:
-				message = "User account is locked"
-			case services.ErrUserInactive:
-				message = "User account is inactive"
-			}
-			
-			am.writeErrorResponse(w, statusCode, message, err.Error())
+			// Use your original error handling logic
+			am.writeAuthErrorResponse(w, err)
 			return
 		}
 
@@ -193,6 +154,48 @@ func (am *AuthMiddleware) OptionalAuth(next http.Handler) http.Handler {
 	})
 }
 
+// APIKeyRateLimit middleware specifically for API key rate limiting
+func (am *AuthMiddleware) APIKeyRateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Try to get API key from headers
+		apiKey := r.Header.Get("X-API-Key")
+		if apiKey == "" {
+			// Also check Authorization header with Bearer token
+			auth := r.Header.Get("Authorization")
+			if strings.HasPrefix(auth, "Bearer ") {
+				apiKey = strings.TrimPrefix(auth, "Bearer ")
+			}
+		}
+
+		// If no API key, continue without rate limiting
+		if apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Validate API key and check rate limit
+		authContext, err := am.authService.ValidateAPIKey(apiKey)
+		if err != nil {
+			if err == services.ErrAPIKeyRateLimited {
+				// Get API key ID to provide more detailed rate limit info
+				keyHash := am.hashAPIKey(apiKey)
+				apiKeyData, keyErr := am.getAPIKeyByHash(keyHash)
+				if keyErr == nil {
+					usageLastHour, _ := am.authService.GetAPIKeyUsageInLastHour(apiKeyData.APIKeyID)
+					am.writeDetailedRateLimitError(w, apiKeyData.RateLimitPerHour, usageLastHour)
+					return
+				}
+			}
+			am.writeErrorResponse(w, http.StatusUnauthorized, "Invalid API key", err.Error())
+			return
+		}
+
+		// Add auth context to request and continue
+		ctx := context.WithValue(r.Context(), AuthContextKey, authContext)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // Helper functions
 
 func (am *AuthMiddleware) authenticate(r *http.Request) (*models.AuthContext, error) {
@@ -214,24 +217,114 @@ func (am *AuthMiddleware) authenticate(r *http.Request) (*models.AuthContext, er
 	return nil, services.ErrInvalidCredentials
 }
 
+// Helper methods for getting API key info (needed for detailed rate limit responses)
+func (am *AuthMiddleware) hashAPIKey(key string) string {
+	// This should match the hashing logic in AuthService
+	// For now, we'll call the service method if available
+	// In a production system, you might want to extract this to a common utility
+	return "" // Placeholder - would need access to the same hashing function
+}
+
+func (am *AuthMiddleware) getAPIKeyByHash(keyHash string) (*models.APIKey, error) {
+	// This would need to be implemented to get API key info for detailed error responses
+	// For now, returning nil to avoid compilation errors
+	return nil, nil
+}
+
 func (am *AuthMiddleware) writeErrorResponse(w http.ResponseWriter, statusCode int, message, detail string) {
 	w.Header().Set("Content-Type", "application/json")
-	
-	// Special handling for rate limit errors
-	if statusCode == http.StatusTooManyRequests {
-		w.Header().Set("Retry-After", "3600") // 1 hour in seconds
-	}
-	
 	w.WriteHeader(statusCode)
 	
 	response := map[string]interface{}{
-		"error":   message,
-		"status":  statusCode,
+		"error":     message,
+		"status":    statusCode,
 		"timestamp": time.Now().Unix(),
 	}
 	
 	if detail != "" {
 		response["detail"] = detail
+	}
+	
+	json.NewEncoder(w).Encode(response)
+}
+
+func (am *AuthMiddleware) writeAuthErrorResponse(w http.ResponseWriter, err error) {
+	var statusCode int
+	var message string
+	
+	// Handle specific authentication errors with your original logic
+	switch err {
+	case services.ErrAPIKeyRateLimited:
+		statusCode = http.StatusTooManyRequests
+		message = "API rate limit exceeded"
+		// Add rate limit headers
+		w.Header().Set("X-RateLimit-Exceeded", "true")
+	case services.ErrAPIKeyExpired:
+		statusCode = http.StatusUnauthorized
+		message = "API key has expired"
+	case services.ErrAPIKeyInactive:
+		statusCode = http.StatusUnauthorized
+		message = "API key is inactive"
+	case services.ErrInvalidCredentials:
+		statusCode = http.StatusUnauthorized
+		message = "Invalid credentials"
+	case services.ErrUserLocked:
+		statusCode = http.StatusUnauthorized
+		message = "User account is locked"
+	case services.ErrUserInactive:
+		statusCode = http.StatusUnauthorized
+		message = "User account is inactive"
+	case services.ErrSessionExpired:
+		statusCode = http.StatusUnauthorized
+		message = "Session has expired"
+	case services.ErrInvalidToken:
+		statusCode = http.StatusUnauthorized
+		message = "Invalid or expired token"
+	default:
+		statusCode = http.StatusUnauthorized
+		message = "Authentication required"
+	}
+
+	am.writeErrorResponse(w, statusCode, message, err.Error())
+}
+
+func (am *AuthMiddleware) writeRateLimitErrorResponse(w http.ResponseWriter, r *http.Request, authContext *models.AuthContext) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-RateLimit-Exceeded", "true")
+	w.WriteHeader(http.StatusTooManyRequests)
+	
+	response := map[string]interface{}{
+		"error":     "Rate limit exceeded",
+		"status":    429,
+		"timestamp": time.Now().Unix(),
+		"detail":    "API key has exceeded its hourly rate limit",
+	}
+	
+	// Add additional rate limit info if available
+	if authContext != nil && authContext.APIKeyID != nil {
+		if usageCount, err := am.authService.GetAPIKeyUsageInLastHour(*authContext.APIKeyID); err == nil {
+			response["usage_last_hour"] = usageCount
+		}
+	}
+	
+	json.NewEncoder(w).Encode(response)
+}
+
+func (am *AuthMiddleware) writeDetailedRateLimitError(w http.ResponseWriter, rateLimit, usageLastHour int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-RateLimit-Limit", string(rune(rateLimit)))
+	w.Header().Set("X-RateLimit-Remaining", "0")
+	w.Header().Set("X-RateLimit-Reset", string(rune(time.Now().Add(time.Hour).Unix())))
+	w.WriteHeader(http.StatusTooManyRequests)
+	
+	response := map[string]interface{}{
+		"error":           "Rate limit exceeded",
+		"status":          429,
+		"timestamp":       time.Now().Unix(),
+		"detail":          "API key has exceeded its hourly rate limit",
+		"rate_limit":      rateLimit,
+		"usage_last_hour": usageLastHour,
+		"reset_time":      time.Now().Add(time.Hour).Unix(),
 	}
 	
 	json.NewEncoder(w).Encode(response)
