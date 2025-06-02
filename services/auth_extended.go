@@ -59,6 +59,11 @@ func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
 	return users, nil
 }
 
+// GetUserByID returns a user by ID with role information
+func (a *AuthService) GetUserByID(userID int) (*models.SystemUser, error) {
+	return a.getUserByID(userID)
+}
+
 // UpdateUser updates a user's information
 func (a *AuthService) UpdateUser(userID int, req *models.UpdateUserRequest) (*models.SystemUser, error) {
 	// Build dynamic update query
@@ -87,7 +92,7 @@ func (a *AuthService) UpdateUser(userID int, req *models.UpdateUserRequest) (*mo
 	}
 
 	if len(setParts) == 0 {
-		return a.getUserByID(userID) // Use private method directly
+		return a.GetUserByID(userID) // No changes, return current user
 	}
 
 	// Add updated_at
@@ -101,12 +106,7 @@ func (a *AuthService) UpdateUser(userID int, req *models.UpdateUserRequest) (*mo
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
-	return a.getUserByID(userID) // Use private method directly
-}
-
-// DeleteUser soft deletes a user by setting them as inactive
-func (a *AuthService) DeleteUser(userID int) error {
-	return a.DeactivateUser(userID)
+	return a.GetUserByID(userID)
 }
 
 // DeactivateUser sets a user as inactive
@@ -200,7 +200,7 @@ func (a *AuthService) UpdateAPIKey(apiKeyID int, req *models.UpdateAPIKeyRequest
 	}
 
 	if len(setParts) == 0 {
-		return a.GetAPIKeyByID(apiKeyID) // Use public method from auth.go
+		return a.getAPIKeyByID(apiKeyID) // No changes, return current API key
 	}
 
 	// Add updated_at
@@ -214,12 +214,7 @@ func (a *AuthService) UpdateAPIKey(apiKeyID int, req *models.UpdateAPIKeyRequest
 		return nil, fmt.Errorf("failed to update API key: %w", err)
 	}
 
-	return a.GetAPIKeyByID(apiKeyID) // Use public method from auth.go
-}
-
-// DeleteAPIKey soft deletes an API key by setting it as inactive
-func (a *AuthService) DeleteAPIKey(apiKeyID int) error {
-	return a.DeactivateAPIKey(apiKeyID)
+	return a.getAPIKeyByID(apiKeyID)
 }
 
 // DeactivateAPIKey sets an API key as inactive
@@ -231,10 +226,66 @@ func (a *AuthService) DeactivateAPIKey(apiKeyID int) error {
 	return nil
 }
 
+// PermanentlyDeleteAPIKey completely removes an API key and all associated data from the database
+func (a *AuthService) PermanentlyDeleteAPIKey(apiKeyID int) error {
+	// Start a transaction to ensure data consistency
+	tx, err := a.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback() // Will be ignored if tx.Commit() succeeds
+
+	// Check if API key exists
+	var exists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM API_Key WHERE api_key_id = ?)`
+	if err := tx.Get(&exists, checkQuery, apiKeyID); err != nil {
+		return fmt.Errorf("failed to check API key existence: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("API key not found")
+	}
+
+	// Delete all usage logs first (foreign key constraint)
+	deleteLogsQuery := `DELETE FROM API_Key_Usage_Log WHERE api_key_id = ?`
+	if _, err := tx.Exec(deleteLogsQuery, apiKeyID); err != nil {
+		return fmt.Errorf("failed to delete API key usage logs: %w", err)
+	}
+
+	// Delete any rate limit data if you have a separate table for that
+	// Note: Uncomment if you have a separate rate limit table
+	// deleteRateLimitQuery := `DELETE FROM API_Key_Rate_Limit WHERE api_key_id = ?`
+	// if _, err := tx.Exec(deleteRateLimitQuery, apiKeyID); err != nil {
+	//     return fmt.Errorf("failed to delete API key rate limit data: %w", err)
+	// }
+
+	// Finally, delete the API key itself
+	deleteKeyQuery := `DELETE FROM API_Key WHERE api_key_id = ?`
+	result, err := tx.Exec(deleteKeyQuery, apiKeyID)
+	if err != nil {
+		return fmt.Errorf("failed to delete API key: %w", err)
+	}
+
+	// Check if any rows were affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("API key not found")
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
+}
+
 // GetAPIKeyUsage returns usage statistics for an API key
 func (a *AuthService) GetAPIKeyUsage(apiKeyID int) (*APIKeyUsageStats, error) {
 	// Get basic API key info
-	apiKey, err := a.GetAPIKeyByID(apiKeyID) // Use public method from auth.go
+	apiKey, err := a.getAPIKeyByID(apiKeyID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get API key: %w", err)
 	}

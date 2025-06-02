@@ -653,7 +653,7 @@
         // Global variables
         let authToken = localStorage.getItem('authToken');
         let currentUser = null;
-        const API_BASE = ''; // Updated to use no prefix
+        const API_BASE = ''; // No prefix - your backend doesn't use /api/v1
 
         // Initialize the application
         document.addEventListener('DOMContentLoaded', function() {
@@ -903,19 +903,27 @@
 
                 if (response.ok) {
                     const data = await response.json();
-                    console.log('API Response:', data); // Debug log
+                    console.log('Full API Response:', JSON.stringify(data, null, 2)); // Enhanced debug log
                     
-                    // Handle different possible response formats
-                    const apiKey = data.api_key || data.key || data.token;
-                    const apiKeyId = data.api_key_id || data.id;
+                    // Your backend returns: { "api_key": {...}, "plain_key": "..." }
+                    const apiKeyData = data.api_key;
+                    const plainKey = data.plain_key;
                     
-                    if (apiKey && apiKeyId) {
-                        showCreatedAPIKey(apiKey, apiKeyId, keyName);
+                    if (apiKeyData && plainKey) {
+                        console.log('Successfully extracted API key data');
+                        showCreatedAPIKey(plainKey, apiKeyData.api_key_id, apiKeyData.key_name);
                     } else {
                         console.error('Unexpected response format:', data);
-                        showModal('API Key Created', `
+                        showModal('API Key Created - Debug Info', `
                             <div class="alert alert-success">✅ API key "${keyName}" created successfully!</div>
-                            <div class="alert alert-warning">The API key was created but the response format was unexpected. Please check the API keys list.</div>
+                            <div class="alert alert-warning">
+                                <strong>Debug Information:</strong><br>
+                                The API key was created but we need to check the response format.
+                            </div>
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin: 10px 0;">
+                                <strong>Full API Response:</strong>
+                                <pre style="font-size: 12px; margin: 10px 0;">${JSON.stringify(data, null, 2)}</pre>
+                            </div>
                         `);
                     }
                     
@@ -924,6 +932,7 @@
                     loadDashboardData(); // Update dashboard stats
                 } else {
                     const error = await response.json();
+                    console.error('API Error Response:', error);
                     showModal('Error Creating API Key', `<div class="alert alert-error">${error.error || 'Failed to create API key'}</div>`);
                 }
             } catch (error) {
@@ -988,77 +997,183 @@
             const action = currentStatus ? 'deactivate' : 'activate';
             const confirmMessage = `Are you sure you want to ${action} this API key?`;
             
+            console.log('Toggling API key:', { apiKeyId, currentStatus, action }); // Debug log
+            
             if (!confirm(confirmMessage)) {
+                console.log('Toggle cancelled by user');
                 return;
             }
 
             try {
+                console.log('Making PUT request to:', `/auth/api-keys/${apiKeyId}`);
+                console.log('Request body:', { active: !currentStatus });
+                
                 const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
                     method: 'PUT',
                     body: JSON.stringify({ active: !currentStatus })
                 });
 
+                console.log('Toggle response status:', response.status);
+                console.log('Toggle response ok:', response.ok);
+
                 if (response.ok) {
-                    loadAPIKeys(); // Refresh the list
-                    loadDashboardData(); // Update dashboard stats
+                    console.log('Toggle successful, refreshing lists...');
                     
-                    // Show success message
-                    const alertHtml = `<div class="alert alert-success">✅ API key ${action}d successfully</div>`;
+                    // Show immediate success feedback
+                    const alertHtml = `<div id="toggleSuccess" class="alert alert-success">✅ API key ${action}d successfully</div>`;
                     const contentDiv = document.getElementById('apiKeysContent');
-                    contentDiv.innerHTML = alertHtml + contentDiv.innerHTML;
+                    
+                    // Insert at the beginning
+                    contentDiv.insertAdjacentHTML('afterbegin', alertHtml);
+                    
+                    // Refresh data
+                    await loadAPIKeys(); // Refresh the list
+                    await loadDashboardData(); // Update dashboard stats
                     
                     // Remove the alert after 3 seconds
                     setTimeout(() => {
-                        const alert = contentDiv.querySelector('.alert-success');
+                        const alert = document.getElementById('toggleSuccess');
                         if (alert) {
                             alert.remove();
                         }
                     }, 3000);
+                    
                 } else {
-                    const error = await response.json();
-                    alert(`Failed to ${action} API key: ${error.error || 'Unknown error'}`);
+                    const errorText = await response.text();
+                    console.error('Toggle failed with response:', errorText);
+                    
+                    let errorMessage = `Failed to ${action} API key`;
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMessage = error.error || error.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+                    }
+                    
+                    alert(`Failed to ${action} API key: ${errorMessage}`);
                 }
             } catch (error) {
-                console.error(`Toggle API Key Error:`, error);
-                alert(`Network error ${action}ing API key`);
+                console.error(`Toggle API Key Network Error:`, error);
+                alert(`Network error ${action}ing API key: ${error.message}`);
             }
         }
 
         async function deleteAPIKey(apiKeyId, keyName) {
-            const confirmMessage = `Are you sure you want to permanently delete the API key "${keyName}"?\n\nThis action cannot be undone and will immediately invalidate the key.`;
+            console.log('Attempting to deactivate API key:', { apiKeyId, keyName }); // Debug log
+            
+            const confirmMessage = `Are you sure you want to deactivate the API key "${keyName}"?\n\nThis will make the key unusable but keeps it in the database for audit purposes.`;
             
             if (!confirm(confirmMessage)) {
+                console.log('Deactivate cancelled by user');
                 return;
             }
 
             try {
-                const response = await apiRequest(`/auth/api-keys/${apiKeyId}`, {
+                console.log('Making deactivate request to:', `/auth/api-keys/${apiKeyId}/deactivate`);
+                
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}/deactivate`, {
                     method: 'DELETE'
                 });
 
+                console.log('Deactivate response status:', response.status);
+                console.log('Deactivate response ok:', response.ok);
+
                 if (response.ok) {
-                    loadAPIKeys(); // Refresh the list
-                    loadDashboardData(); // Update dashboard stats
+                    console.log('Deactivate successful, refreshing lists...');
                     
-                    // Show success message in the API keys section
-                    const alertHtml = '<div class="alert alert-success">✅ API key deleted successfully</div>';
+                    // Show immediate success feedback
+                    const alertHtml = '<div id="deleteSuccess" class="alert alert-success">✅ API key deactivated successfully</div>';
                     const contentDiv = document.getElementById('apiKeysContent');
-                    contentDiv.innerHTML = alertHtml + contentDiv.innerHTML;
                     
-                    // Remove the alert after 3 seconds
+                    // Insert at the beginning
+                    contentDiv.insertAdjacentHTML('afterbegin', alertHtml);
+                    
+                    // Refresh data
+                    await loadAPIKeys(); // Refresh the list
+                    await loadDashboardData(); // Update dashboard stats
+                    
+                    // Remove the alert after 5 seconds
                     setTimeout(() => {
-                        const alert = contentDiv.querySelector('.alert-success');
+                        const alert = document.getElementById('deleteSuccess');
                         if (alert) {
                             alert.remove();
                         }
-                    }, 3000);
+                    }, 5000);
+                    
                 } else {
-                    const error = await response.json();
-                    alert(`Failed to delete API key: ${error.error || 'Unknown error'}`);
+                    const errorText = await response.text();
+                    console.error('Deactivate failed with response:', errorText);
+                    
+                    let errorMessage = 'Failed to deactivate API key';
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMessage = error.error || error.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+                    }
+                    
+                    alert(`Failed to deactivate API key: ${errorMessage}`);
                 }
             } catch (error) {
-                console.error('Delete API Key Error:', error);
-                alert('Network error deleting API key');
+                console.error('Deactivate API Key Network Error:', error);
+                alert(`Network error deactivating API key: ${error.message}`);
+            }
+        }
+
+        async function permanentlyDeleteAPIKey(apiKeyId, keyName) {
+            console.log('Attempting to permanently delete API key:', { apiKeyId, keyName });
+            
+            const confirmMessage = `⚠️ PERMANENT DELETE ⚠️\n\nAre you sure you want to PERMANENTLY DELETE the API key "${keyName}"?\n\nThis action:\n- Cannot be undone\n- Will remove all history and logs\n- Will immediately invalidate the key\n\nType "DELETE" to confirm:`;
+            
+            const userInput = prompt(confirmMessage);
+            if (userInput !== 'DELETE') {
+                console.log('Permanent delete cancelled by user');
+                return;
+            }
+
+            try {
+                console.log('Making permanent DELETE request to:', `/auth/api-keys/${apiKeyId}/permanent`);
+                
+                const response = await apiRequest(`/auth/api-keys/${apiKeyId}/permanent`, {
+                    method: 'DELETE'
+                });
+
+                console.log('Permanent delete response status:', response.status);
+
+                if (response.ok) {
+                    console.log('Permanent delete successful, refreshing lists...');
+                    
+                    const alertHtml = '<div id="permanentDeleteSuccess" class="alert alert-success">✅ API key permanently deleted</div>';
+                    const contentDiv = document.getElementById('apiKeysContent');
+                    contentDiv.insertAdjacentHTML('afterbegin', alertHtml);
+                    
+                    await loadAPIKeys();
+                    await loadDashboardData();
+                    
+                    setTimeout(() => {
+                        const alert = document.getElementById('permanentDeleteSuccess');
+                        if (alert) {
+                            alert.remove();
+                        }
+                    }, 5000);
+                    
+                } else {
+                    const errorText = await response.text();
+                    console.error('Permanent delete failed:', errorText);
+                    
+                    let errorMessage = 'Failed to permanently delete API key';
+                    try {
+                        const error = JSON.parse(errorText);
+                        errorMessage = error.error || error.message || errorMessage;
+                    } catch (e) {
+                        errorMessage = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+                    }
+                    
+                    alert(`Failed to permanently delete API key: ${errorMessage}`);
+                }
+            } catch (error) {
+                console.error('Permanent Delete Network Error:', error);
+                alert(`Network error permanently deleting API key: ${error.message}`);
             }
         }
 
@@ -1256,7 +1371,8 @@
                                             title="${key.active ? 'Deactivate' : 'Activate'}">
                                         ${key.active ? '⏸️' : '▶️'}
                                     </button>
-                                    <button class="btn btn-danger" onclick="deleteAPIKey(${key.api_key_id}, '${key.key_name}')" title="Delete">🗑️</button>
+                                    <button class="btn btn-danger" onclick="deleteAPIKey(${key.api_key_id}, '${key.key_name}')" title="Deactivate">🚫</button>
+                                    <button class="btn btn-danger" onclick="permanentlyDeleteAPIKey(${key.api_key_id}, '${key.key_name}')" title="Permanent Delete" style="background: #8b0000;">🗑️</button>
                                 </td>
                             </tr>
                         `).join('')}
@@ -1678,7 +1794,8 @@
                                     onclick="toggleAPIKey(${apiKey.api_key_id}, ${apiKey.active}); closeModal();">
                                 ${apiKey.active ? 'Deactivate' : 'Activate'}
                             </button>
-                            <button class="btn btn-danger" onclick="deleteAPIKey(${apiKey.api_key_id}, '${apiKey.key_name}'); closeModal();">Delete</button>
+                            <button class="btn btn-danger" onclick="deleteAPIKey(${apiKey.api_key_id}, '${apiKey.key_name}'); closeModal();">Deactivate</button>
+                            <button class="btn btn-danger" onclick="permanentlyDeleteAPIKey(${apiKey.api_key_id}, '${apiKey.key_name}'); closeModal();" style="background: #8b0000;">Permanent Delete</button>
                         </div>
                     `;
                     showModal(`API Key: ${apiKey.key_name}`, content);
