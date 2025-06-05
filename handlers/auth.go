@@ -208,6 +208,40 @@ func (ah *AuthHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "User deactivated successfully"})
 }
 
+// PermanentlyDeleteUser permanently deletes a user (admin only)
+func (ah *AuthHandler) PermanentlyDeleteUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	if err := ah.authService.PermanentlyDeleteUser(userID); err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to permanently delete user", err.Error())
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "User permanently deleted successfully"})
+}
+
+// UnlockUser unlocks a locked user account (admin only)
+func (ah *AuthHandler) UnlockUser(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	userID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	if err := ah.authService.UnlockUser(userID); err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to unlock user", err.Error())
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "User unlocked successfully"})
+}
+
 // CreateAPIKey creates a new API key (admin only)
 func (ah *AuthHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	authContext := middleware.GetAuthContext(r)

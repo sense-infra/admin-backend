@@ -530,6 +530,57 @@ func (a *AuthService) DeactivateUser(userID int) error {
 	return nil
 }
 
+// PermanentlyDeleteUser permanently deletes a user from the database
+func (a *AuthService) PermanentlyDeleteUser(userID int) error {
+	// First revoke all sessions for this user
+	sessionQuery := `DELETE FROM User_Session WHERE user_id = ?`
+	if _, err := a.db.Exec(sessionQuery, userID); err != nil {
+		return fmt.Errorf("failed to delete user sessions: %w", err)
+	}
+
+	// Then permanently delete the user
+	userQuery := `DELETE FROM System_User WHERE user_id = ?`
+	result, err := a.db.Exec(userQuery, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	// Check if user was actually deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("user with ID %d not found", userID)
+	}
+
+	return nil
+}
+
+// UnlockUser unlocks a locked user account
+func (a *AuthService) UnlockUser(userID int) error {
+	query := `UPDATE System_User 
+		SET locked_until = NULL, failed_login_attempts = 0, updated_at = NOW() 
+		WHERE user_id = ?`
+	
+	result, err := a.db.Exec(query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to unlock user: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("user with ID %d not found", userID)
+	}
+
+	return nil
+}
+
 // GetAllAPIKeys returns all API keys with creator information
 func (a *AuthService) GetAllAPIKeys() ([]*models.APIKey, error) {
 	query := `SELECT ak.*, u.username as creator_username

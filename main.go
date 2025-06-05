@@ -75,6 +75,7 @@ func main() {
 
 	// Admin-only authentication routes
 	adminAuthRoutes := r.PathPrefix("/auth").Subrouter()
+	adminAuthRoutes.Use(authMiddleware.RequireAuth)
 	
 	// User management routes
 	userRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
@@ -96,6 +97,16 @@ func main() {
 	userDeleteRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userDeleteRoutes.Use(authMiddleware.RequirePermission("users", "delete"))
 	userDeleteRoutes.HandleFunc("/{id:[0-9]+}", authHandler.DeleteUser).Methods("DELETE")
+
+	// Permanent delete route (separate endpoint)
+	userPermanentDeleteRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
+	userPermanentDeleteRoutes.Use(authMiddleware.RequirePermission("users", "delete"))
+	userPermanentDeleteRoutes.HandleFunc("/{id:[0-9]+}/permanent", authHandler.PermanentlyDeleteUser).Methods("DELETE")
+
+	// Add this with your other user routes
+	userUnlockRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
+	userUnlockRoutes.Use(authMiddleware.RequirePermission("users", "update"))
+	userUnlockRoutes.HandleFunc("/{id:[0-9]+}/unlock", authHandler.UnlockUser).Methods("POST")
 
 	// Roles route
 	rolesRoutes := adminAuthRoutes.PathPrefix("/roles").Subrouter()
