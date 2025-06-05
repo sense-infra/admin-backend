@@ -94,6 +94,163 @@ func (ah *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }
 
+// AdminResetPassword allows admin users to reset any user's password
+func (ah *AuthHandler) AdminResetPassword(w http.ResponseWriter, r *http.Request) {
+	authContext := middleware.GetAuthContext(r)
+	if authContext == nil || authContext.UserID == nil {
+		WriteErrorResponse(w, http.StatusUnauthorized, "Authentication required", "")
+		return
+	}
+
+	// Check if user has permission to update users
+	if !authContext.HasPermission("users", "update") {
+		WriteErrorResponse(w, http.StatusForbidden, "Insufficient permissions", "")
+		return
+	}
+
+	vars := mux.Vars(r)
+	userID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"new_password" validate:"required,min=8"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	if err := ah.authService.AdminResetPassword(*authContext.UserID, userID, req.NewPassword); err != nil {
+		if strings.Contains(err.Error(), "insufficient permissions") {
+			WriteErrorResponse(w, http.StatusForbidden, "Insufficient permissions", err.Error())
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to reset password", err.Error())
+		}
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]string{
+		"message": "Password reset successfully",
+	})
+}
+
+// AdminGeneratePassword generates a random password for a user (admin only)
+func (ah *AuthHandler) AdminGeneratePassword(w http.ResponseWriter, r *http.Request) {
+	authContext := middleware.GetAuthContext(r)
+	if authContext == nil || authContext.UserID == nil {
+		WriteErrorResponse(w, http.StatusUnauthorized, "Authentication required", "")
+		return
+	}
+
+	// Check if user has permission to update users
+	if !authContext.HasPermission("users", "update") {
+		WriteErrorResponse(w, http.StatusForbidden, "Insufficient permissions", "")
+		return
+	}
+
+	vars := mux.Vars(r)
+	userID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid user ID", "")
+		return
+	}
+
+	newPassword, err := ah.authService.GenerateRandomPasswordForUser(*authContext.UserID, userID)
+	if err != nil {
+		if strings.Contains(err.Error(), "insufficient permissions") {
+			WriteErrorResponse(w, http.StatusForbidden, "Insufficient permissions", err.Error())
+		} else {
+			WriteErrorResponse(w, http.StatusInternalServerError, "Failed to generate password", err.Error())
+		}
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"message":      "Password generated successfully",
+		"new_password": newPassword,
+	})
+}
+
+// GetCurrentUserProfile returns the current user's profile with additional information
+func (ah *AuthHandler) GetCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
+	authContext := middleware.GetAuthContext(r)
+	if authContext == nil || authContext.UserID == nil {
+		WriteErrorResponse(w, http.StatusUnauthorized, "Authentication required", "")
+		return
+	}
+
+	user, err := ah.authService.GetUserByID(*authContext.UserID)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to get user profile", err.Error())
+		return
+	}
+
+	// Remove sensitive information
+	user.PasswordHash = ""
+
+	WriteJSONResponse(w, http.StatusOK, user)
+}
+
+// UpdateCurrentUserProfile allows users to update their own profile
+func (ah *AuthHandler) UpdateCurrentUserProfile(w http.ResponseWriter, r *http.Request) {
+	authContext := middleware.GetAuthContext(r)
+	if authContext == nil || authContext.UserID == nil {
+		WriteErrorResponse(w, http.StatusUnauthorized, "Authentication required", "")
+		return
+	}
+
+	var req struct {
+		Email     *string `json:"email" validate:"omitempty,email"`
+		FirstName *string `json:"first_name" validate:"omitempty,max=100"`
+		LastName  *string `json:"last_name" validate:"omitempty,max=100"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid request body", err.Error())
+		return
+	}
+
+	// Convert to UpdateUserRequest (users can't change their own role or active status)
+	updateReq := &models.UpdateUserRequest{
+		Email:     req.Email,
+		FirstName: req.FirstName,
+		LastName:  req.LastName,
+	}
+
+	user, err := ah.authService.UpdateUser(*authContext.UserID, updateReq)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to update profile", err.Error())
+		return
+	}
+
+	// Remove sensitive information
+	user.PasswordHash = ""
+
+	WriteJSONResponse(w, http.StatusOK, user)
+}
+
+// Add this to the models/auth.go file - new request types for password management
+
+// AdminResetPasswordRequest represents a request to reset a user's password (admin only)
+type AdminResetPasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+// ChangeOwnPasswordRequest represents a request to change the current user's password
+type ChangeOwnPasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
+
+// UpdateProfileRequest represents a request to update user profile
+type UpdateProfileRequest struct {
+	Email     *string `json:"email" validate:"omitempty,email"`
+	FirstName *string `json:"first_name" validate:"omitempty,max=100"`
+	LastName  *string `json:"last_name" validate:"omitempty,max=100"`
+}
+
 // GetProfile returns the current user's profile
 func (ah *AuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	authContext := middleware.GetAuthContext(r)

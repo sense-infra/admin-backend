@@ -328,9 +328,9 @@ func (a *AuthService) CreateUser(req *models.CreateUserRequest, createdBy int) (
 
 	// Insert user
 	query := `INSERT INTO System_User 
-		(username, email, password_hash, role_id, first_name, last_name, created_by) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)`
-	
+		(username, email, password_hash, role_id, first_name, last_name, created_by, force_password_change) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)`
+
 	result, err := a.db.Exec(query, req.Username, req.Email, string(hashedPassword), 
 		req.RoleID, req.FirstName, req.LastName, createdBy)
 	if err != nil {
@@ -412,7 +412,83 @@ func (a *AuthService) LogAPIUsage(apiKeyID int, endpoint, method, ipAddress, use
 	return nil
 }
 
-// ==== EXTENDED METHODS FROM auth_extended.go ====
+// AdminResetPassword allows admin users to reset any user's password
+func (a *AuthService) AdminResetPassword(adminUserID, targetUserID int, newPassword string) error {
+	// Verify admin has permission (this should be checked in middleware, but double-check)
+	adminUser, err := a.getUserByID(adminUserID)
+	if err != nil {
+		return fmt.Errorf("failed to get admin user: %w", err)
+	}
+	
+	if !adminUser.Role.Permissions.HasPermission("users", "update") {
+		return fmt.Errorf("insufficient permissions to reset user password")
+	}
+
+	// Verify target user exists
+	targetUser, err := a.getUserByID(targetUserID)
+	if err != nil {
+		return fmt.Errorf("failed to get target user: %w", err)
+	}
+
+	// Prevent admins from changing other admin passwords unless they're super admin
+	if targetUser.Role.Name == "admin" && adminUser.Role.Name != "super_admin" && adminUserID != targetUserID {
+		return fmt.Errorf("insufficient permissions to reset admin user password")
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Update password in database
+	query := `UPDATE System_User 
+		SET password_hash = ?, password_changed_at = NOW(), force_password_change = FALSE 
+		WHERE user_id = ?`
+	
+	if _, err := a.db.Exec(query, string(hashedPassword), targetUserID); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Invalidate all sessions for the target user (force re-login with new password)
+	if err := a.invalidateUserSessions(targetUserID); err != nil {
+		return fmt.Errorf("failed to invalidate user sessions: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateRandomPasswordForUser generates a random password and sets it for a user (admin only)
+func (a *AuthService) GenerateRandomPasswordForUser(adminUserID, targetUserID int) (string, error) {
+	// Verify admin has permission
+	adminUser, err := a.getUserByID(adminUserID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get admin user: %w", err)
+	}
+	
+	if !adminUser.Role.Permissions.HasPermission("users", "update") {
+		return "", fmt.Errorf("insufficient permissions to reset user password")
+	}
+
+	// Generate new password
+	newPassword := a.generateRandomPassword()
+	
+	// Use AdminResetPassword to set the new password
+	if err := a.AdminResetPassword(adminUserID, targetUserID, newPassword); err != nil {
+		return "", err
+	}
+
+	return newPassword, nil
+}
+
+// invalidateUserSessions removes all active sessions for a user
+func (a *AuthService) invalidateUserSessions(userID int) error {
+	query := `DELETE FROM User_Session WHERE user_id = ?`
+	if _, err := a.db.Exec(query, userID); err != nil {
+		return fmt.Errorf("failed to invalidate user sessions: %w", err)
+	}
+	return nil
+}
 
 // GetAllUsers returns all users with their roles
 func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {

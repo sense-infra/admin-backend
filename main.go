@@ -69,9 +69,17 @@ func main() {
 	// Protected routes (authentication required)
 	authRoutes := r.PathPrefix("/auth").Subrouter()
 	authRoutes.Use(authMiddleware.RequireAuth)
-	authRoutes.HandleFunc("/profile", authHandler.GetProfile).Methods("GET")
+	authRoutes.HandleFunc("/profile", authHandler.GetCurrentUserProfile).Methods("GET")
+	authRoutes.HandleFunc("/profile", authHandler.UpdateCurrentUserProfile).Methods("PUT")
 	authRoutes.HandleFunc("/logout", authHandler.Logout).Methods("POST")
 	authRoutes.HandleFunc("/change-password", authHandler.ChangePassword).Methods("POST")
+
+	// Password management routes (require users update permission)
+	adminPasswordRoutes := r.PathPrefix("/auth").Subrouter()
+	adminPasswordRoutes.Use(authMiddleware.RequireAuth)
+	adminPasswordRoutes.Use(authMiddleware.RequirePermission("users", "update"))
+	adminPasswordRoutes.HandleFunc("/users/{id:[0-9]+}/reset-password", authHandler.AdminResetPassword).Methods("POST")
+	adminPasswordRoutes.HandleFunc("/users/{id:[0-9]+}/generate-password", authHandler.AdminGeneratePassword).Methods("POST")
 
 	// Admin-only authentication routes
 	adminAuthRoutes := r.PathPrefix("/auth").Subrouter()
