@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -53,16 +52,7 @@ func main() {
 	r.Use(middleware.Logger)             // 2. Request logging
 	// Note: LogAPIUsage will be applied to protected routes only
 
-	// Handle root path specifically for admin interface
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" {
-			// Serve admin interface
-			http.ServeFile(w, r, "./web/admin.html")
-		}
-	}).Methods("GET")
-
 	// Public routes (no authentication required)
-	// Note: No "/api/v1" prefix since k8s adds it
 	r.HandleFunc("/health", healthHandler.GetHealth).Methods("GET")
 	r.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
 
@@ -74,6 +64,10 @@ func main() {
 	authRoutes.HandleFunc("/logout", authHandler.Logout).Methods("POST")
 	authRoutes.HandleFunc("/change-password", authHandler.ChangePassword).Methods("POST")
 
+	// Admin-only authentication routes
+	adminAuthRoutes := r.PathPrefix("/auth").Subrouter()
+	adminAuthRoutes.Use(authMiddleware.RequireAuth)
+
 	// Password management routes (require users update permission)
 	adminPasswordRoutes := r.PathPrefix("/auth").Subrouter()
 	adminPasswordRoutes.Use(authMiddleware.RequireAuth)
@@ -81,26 +75,22 @@ func main() {
 	adminPasswordRoutes.HandleFunc("/users/{id:[0-9]+}/reset-password", authHandler.AdminResetPassword).Methods("POST")
 	adminPasswordRoutes.HandleFunc("/users/{id:[0-9]+}/generate-password", authHandler.AdminGeneratePassword).Methods("POST")
 
-	// Admin-only authentication routes
-	adminAuthRoutes := r.PathPrefix("/auth").Subrouter()
-	adminAuthRoutes.Use(authMiddleware.RequireAuth)
-	
 	// User management routes
 	userRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userRoutes.Use(authMiddleware.RequirePermission("users", "read"))
 	userRoutes.HandleFunc("", authHandler.GetUsers).Methods("GET")
 	userRoutes.HandleFunc("/{id:[0-9]+}", authHandler.GetUser).Methods("GET")
-	
+
 	// User creation route
 	userCreateRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userCreateRoutes.Use(authMiddleware.RequirePermission("users", "create"))
 	userCreateRoutes.HandleFunc("", authHandler.CreateUser).Methods("POST")
-	
+
 	// User update route
 	userUpdateRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userUpdateRoutes.Use(authMiddleware.RequirePermission("users", "update"))
 	userUpdateRoutes.HandleFunc("/{id:[0-9]+}", authHandler.UpdateUser).Methods("PUT")
-	
+
 	// User delete route
 	userDeleteRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userDeleteRoutes.Use(authMiddleware.RequirePermission("users", "delete"))
@@ -111,7 +101,7 @@ func main() {
 	userPermanentDeleteRoutes.Use(authMiddleware.RequirePermission("users", "delete"))
 	userPermanentDeleteRoutes.HandleFunc("/{id:[0-9]+}/permanent", authHandler.PermanentlyDeleteUser).Methods("DELETE")
 
-	// Add this with your other user routes
+	// User unlock route
 	userUnlockRoutes := adminAuthRoutes.PathPrefix("/users").Subrouter()
 	userUnlockRoutes.Use(authMiddleware.RequirePermission("users", "update"))
 	userUnlockRoutes.HandleFunc("/{id:[0-9]+}/unlock", authHandler.UnlockUser).Methods("POST")
@@ -123,7 +113,7 @@ func main() {
 
 	// API Key management routes
 	apiKeyRoutes := r.PathPrefix("/auth/api-keys").Subrouter()
-	
+
 	// API Key read routes
 	apiKeyReadRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
 	apiKeyReadRoutes.Use(authMiddleware.RequirePermission("api_keys", "read"))
@@ -218,42 +208,37 @@ func main() {
 	rateLimitRoutes.HandleFunc("/status", rateLimitHandler.GetAllAPIKeyRateLimitStatus).Methods("GET")
 	rateLimitRoutes.HandleFunc("/metrics", rateLimitHandler.GetRateLimitingMetrics).Methods("GET")
 	rateLimitRoutes.HandleFunc("/{id:[0-9]+}", rateLimitHandler.GetAPIKeyRateLimitStatus).Methods("GET")
-	
+
 	// Rate limit admin actions (admin only)
 	rateLimitAdminRoutes := r.PathPrefix("/admin/rate-limits").Subrouter()
 	rateLimitAdminRoutes.Use(middleware.RateLimit(10, time.Hour))   // Very strict for admin actions
 	rateLimitAdminRoutes.Use(authMiddleware.RequireRole("admin"))
 	rateLimitAdminRoutes.HandleFunc("/{id:[0-9]+}/reset", rateLimitHandler.ResetAPIKeyRateLimit).Methods("POST")
 
-	// Serve static files (web interface)
-	webDir := "./web/"
-	if _, err := os.Stat(webDir); os.IsNotExist(err) {
-		log.Println("Web directory not found, creating basic file server")
-		r.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir("./"))))
-	} else {
-		r.PathPrefix("/").Handler(http.StripPrefix("/", http.FileServer(http.Dir(webDir))))
-	}
-
 	// Start server
 	port := cfg.Server.Port
 	if port == "" {
 		port = "8080" // Default port
 	}
-	
+
 	// Ensure port doesn't have extra characters
 	if port[0] == ':' {
 		port = port[1:] // Remove leading colon if present
 	}
-	
-	log.Printf("Starting server on :%s", port)
-	log.Printf("Admin interface: http://localhost:%s", port)
-	log.Printf("API endpoint: http://localhost:%s (no /api/v1 prefix - k8s adds it)", port)
-	log.Printf("Default admin credentials: admin / SenseGuard2025!")
-	log.Printf("Default viewer credentials: viewer / Viewer2025!")
-	log.Printf("API Key rate limiting: ENABLED (per-key hourly limits)")
-	log.Printf("IP-based rate limiting: ENABLED (varies by endpoint)")
-	
+
+	log.Printf("🚀 Starting Sense Security API Server on port :%s", port)
+	log.Printf("📡 API Base URL: http://localhost:%s", port)
+	log.Printf("🔐 Default admin credentials: admin / SenseGuard2025!")
+	log.Printf("👀 Default viewer credentials: viewer / Viewer2025!")
+	log.Printf("⚡ Rate limiting: ENABLED")
+	log.Printf("🛡️  CORS: ENABLED")
+	log.Printf("📊 API usage logging: ENABLED")
+	log.Printf("💾 Database: Connected")
+	log.Printf("🔑 JWT Auth: Enabled")
+	log.Println("────────────────────────────────────────")
+	log.Println("✅ API Server ready to accept connections")
+
 	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		log.Fatalf("❌ Server failed to start: %v", err)
 	}
 }
