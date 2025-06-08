@@ -475,12 +475,6 @@ func (ah *AuthHandler) UpdateAPIKey(w http.ResponseWriter, r *http.Request) {
 	WriteJSONResponse(w, http.StatusOK, apiKey)
 }
 
-// DeleteAPIKey deactivates an API key (admin only) - backward compatibility
-func (ah *AuthHandler) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
-	// For backward compatibility, this calls deactivate
-	ah.DeactivateAPIKey(w, r)
-}
-
 // DeactivateAPIKey sets an API key as inactive (admin only)
 func (ah *AuthHandler) DeactivateAPIKey(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)

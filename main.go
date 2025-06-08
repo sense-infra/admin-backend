@@ -113,28 +113,34 @@ func main() {
 
 	// API Key management routes
 	apiKeyRoutes := r.PathPrefix("/auth/api-keys").Subrouter()
+        apiKeyRoutes.Use(authMiddleware.RequireAuth) // ADD THIS LINE - was missing!
 
-	// API Key read routes
-	apiKeyReadRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
-	apiKeyReadRoutes.Use(authMiddleware.RequirePermission("api_keys", "read"))
-	apiKeyReadRoutes.HandleFunc("", authHandler.GetAPIKeys).Methods("GET")
-	apiKeyReadRoutes.HandleFunc("/{id:[0-9]+}", authHandler.GetAPIKey).Methods("GET")
-	apiKeyReadRoutes.HandleFunc("/{id:[0-9]+}/usage", authHandler.GetAPIKeyUsage).Methods("GET")
+        // API Key read routes
+        apiKeyReadRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
+        apiKeyReadRoutes.Use(authMiddleware.RequirePermission("api_keys", "read"))
+        apiKeyReadRoutes.HandleFunc("", authHandler.GetAPIKeys).Methods("GET")
+        apiKeyReadRoutes.HandleFunc("/{id:[0-9]+}", authHandler.GetAPIKey).Methods("GET")
+        apiKeyReadRoutes.HandleFunc("/{id:[0-9]+}/usage", authHandler.GetAPIKeyUsage).Methods("GET")
 
-	// API Key create routes
-	apiKeyCreateRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
-	apiKeyCreateRoutes.Use(authMiddleware.RequirePermission("api_keys", "create"))
-	apiKeyCreateRoutes.HandleFunc("", authHandler.CreateAPIKey).Methods("POST")
+        // API Key create routes
+        apiKeyCreateRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
+        apiKeyCreateRoutes.Use(authMiddleware.RequirePermission("api_keys", "create"))
+        apiKeyCreateRoutes.HandleFunc("", authHandler.CreateAPIKey).Methods("POST")
 
-	// API Key update routes
-	apiKeyUpdateRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
-	apiKeyUpdateRoutes.Use(authMiddleware.RequirePermission("api_keys", "update"))
-	apiKeyUpdateRoutes.HandleFunc("/{id:[0-9]+}", authHandler.UpdateAPIKey).Methods("PUT")
+        // API Key update routes
+        apiKeyUpdateRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
+        apiKeyUpdateRoutes.Use(authMiddleware.RequirePermission("api_keys", "update"))
+        apiKeyUpdateRoutes.HandleFunc("/{id:[0-9]+}", authHandler.UpdateAPIKey).Methods("PUT")
 
-	// API Key delete routes
-	apiKeyDeleteRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
-	apiKeyDeleteRoutes.Use(authMiddleware.RequirePermission("api_keys", "delete"))
-	apiKeyDeleteRoutes.HandleFunc("/{id:[0-9]+}", authHandler.DeleteAPIKey).Methods("DELETE")
+        // API Key delete routes - FIXED to use permanent delete
+        apiKeyDeleteRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
+        apiKeyDeleteRoutes.Use(authMiddleware.RequirePermission("api_keys", "delete"))
+        apiKeyDeleteRoutes.HandleFunc("/{id:[0-9]+}", authHandler.PermanentlyDeleteAPIKey).Methods("DELETE") // Changed to permanent delete
+
+        // Optional: Add deactivate route if you want both options
+        apiKeyDeactivateRoutes := apiKeyRoutes.PathPrefix("").Subrouter()
+        apiKeyDeactivateRoutes.Use(authMiddleware.RequirePermission("api_keys", "update"))
+        apiKeyDeactivateRoutes.HandleFunc("/{id:[0-9]+}/deactivate", authHandler.DeactivateAPIKey).Methods("POST")
 
 	// Customer routes - with proper rate limiting for API keys
 	customerRoutes := r.PathPrefix("/customers").Subrouter()
