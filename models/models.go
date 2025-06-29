@@ -4,8 +4,101 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
+
+// CustomDate handles date-only strings in JSON (YYYY-MM-DD format)
+type CustomDate struct {
+	time.Time
+}
+
+// UnmarshalJSON implements the json.Unmarshaler interface for CustomDate
+func (cd *CustomDate) UnmarshalJSON(data []byte) error {
+	// Remove quotes from JSON string
+	dateStr := strings.Trim(string(data), `"`)
+	
+	if dateStr == "null" || dateStr == "" {
+		cd.Time = time.Time{}
+		return nil
+	}
+	
+	// Parse date in YYYY-MM-DD format
+	parsedTime, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return fmt.Errorf("invalid date format: %s, expected YYYY-MM-DD", dateStr)
+	}
+	
+	cd.Time = parsedTime
+	return nil
+}
+
+// MarshalJSON implements the json.Marshaler interface for CustomDate
+func (cd CustomDate) MarshalJSON() ([]byte, error) {
+	if cd.Time.IsZero() {
+		return []byte("null"), nil
+	}
+	return json.Marshal(cd.Time.Format("2006-01-02"))
+}
+
+// Scan implements the sql.Scanner interface for CustomDate
+func (cd *CustomDate) Scan(value interface{}) error {
+	if value == nil {
+		cd.Time = time.Time{}
+		return nil
+	}
+	
+	switch v := value.(type) {
+	case time.Time:
+		cd.Time = v
+		return nil
+	case string:
+		parsedTime, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			return err
+		}
+		cd.Time = parsedTime
+		return nil
+	default:
+		return fmt.Errorf("cannot scan %T into CustomDate", value)
+	}
+}
+
+// Value implements the driver.Valuer interface for CustomDate
+func (cd CustomDate) Value() (driver.Value, error) {
+	if cd.Time.IsZero() {
+		return nil, nil
+	}
+	return cd.Time.Format("2006-01-02"), nil
+}
+
+// String returns the date in YYYY-MM-DD format
+func (cd CustomDate) String() string {
+	if cd.Time.IsZero() {
+		return ""
+	}
+	return cd.Time.Format("2006-01-02")
+}
+
+// IsZero reports whether cd represents the zero time instant
+func (cd CustomDate) IsZero() bool {
+	return cd.Time.IsZero()
+}
+
+// Before reports whether the time instant cd is before u
+func (cd CustomDate) Before(u CustomDate) bool {
+	return cd.Time.Before(u.Time)
+}
+
+// After reports whether the time instant cd is after u
+func (cd CustomDate) After(u CustomDate) bool {
+	return cd.Time.After(u.Time)
+}
+
+// Equal reports whether cd and u represent the same time instant
+func (cd CustomDate) Equal(u CustomDate) bool {
+	return cd.Time.Equal(u.Time)
+}
 
 // Customer represents a customer in the system
 type Customer struct {
@@ -50,6 +143,92 @@ type ContractServiceTier struct {
 	EndDate               time.Time `json:"end_date" db:"end_date"`
 	CreatedAt             time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Enhanced contract models with relationships
+type ContractWithDetails struct {
+	ContractID         int                  `json:"contract_id" db:"contract_id"`
+	ServiceAddress     string               `json:"service_address" db:"service_address"`
+	NotificationEmail  *string              `json:"notification_email,omitempty" db:"notification_email"`
+	NotificationPhone  *string              `json:"notification_phone,omitempty" db:"notification_phone"`
+	StartDate          time.Time            `json:"start_date" db:"start_date"`
+	EndDate            time.Time            `json:"end_date" db:"end_date"`
+	CreatedAt          time.Time            `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time            `json:"updated_at" db:"updated_at"`
+	Customers          []CustomerBasic      `json:"customers"`
+	CurrentServiceTier *ServiceTierBasic    `json:"current_service_tier,omitempty"`
+}
+
+// Customer with contracts for detailed view
+type CustomerWithContracts struct {
+	CustomerID     int             `json:"customer_id" db:"customer_id"`
+	NameOnContract string          `json:"name_on_contract" db:"name_on_contract"`
+	Address        string          `json:"address" db:"address"`
+	UniqueID       string          `json:"unique_id" db:"unique_id"`
+	Email          *string         `json:"email,omitempty" db:"email"`
+	PhoneNumber    *string         `json:"phone_number,omitempty" db:"phone_number"`
+	CreatedAt      time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at" db:"updated_at"`
+	Contracts      []ContractBasic `json:"contracts"`
+}
+
+// Basic customer info for relationships
+type CustomerBasic struct {
+	CustomerID     int     `json:"customer_id" db:"customer_id"`
+	NameOnContract string  `json:"name_on_contract" db:"name_on_contract"`
+	Email          *string `json:"email,omitempty" db:"email"`
+	PhoneNumber    *string `json:"phone_number,omitempty" db:"phone_number"`
+}
+
+// Basic contract info for relationships
+type ContractBasic struct {
+	ContractID       int       `json:"contract_id" db:"contract_id"`
+	ServiceAddress   string    `json:"service_address" db:"service_address"`
+	StartDate        time.Time `json:"start_date" db:"start_date"`
+	EndDate          time.Time `json:"end_date" db:"end_date"`
+	ServiceTierName  *string   `json:"service_tier_name,omitempty" db:"service_tier_name"`
+}
+
+// Basic service tier info for relationships
+type ServiceTierBasic struct {
+	ServiceTierID int     `json:"service_tier_id" db:"service_tier_id"`
+	Name          string  `json:"name" db:"name"`
+	Description   *string `json:"description,omitempty" db:"description"`
+}
+
+// Request models for contract creation with relationships - UPDATED TO USE CustomDate
+type CreateContractWithRelationsRequest struct {
+	ServiceAddress    string     `json:"service_address" validate:"required"`
+	NotificationEmail *string    `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string    `json:"notification_phone" validate:"omitempty"`
+	StartDate         CustomDate `json:"start_date" validate:"required"`
+	EndDate           CustomDate `json:"end_date" validate:"required"`
+	CustomerID        int        `json:"customer_id" validate:"required"`
+	ServiceTierID     int        `json:"service_tier_id" validate:"required"`
+}
+
+// Request models for contract updates with relationships - UPDATED TO USE CustomDate
+type UpdateContractWithRelationsRequest struct {
+	ServiceAddress    *string     `json:"service_address"`
+	NotificationEmail *string     `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string     `json:"notification_phone"`
+	StartDate         *CustomDate `json:"start_date"`
+	EndDate           *CustomDate `json:"end_date"`
+	CustomerID        *int        `json:"customer_id"`
+	ServiceTierID     *int        `json:"service_tier_id"`
+}
+
+// Service tier request models
+type CreateServiceTierRequest struct {
+	Name        string          `json:"name" validate:"required"`
+	Description *string         `json:"description"`
+	Config      json.RawMessage `json:"config"`
+}
+
+type UpdateServiceTierRequest struct {
+	Name        *string          `json:"name"`
+	Description *string          `json:"description"`
+	Config      *json.RawMessage `json:"config"`
 }
 
 // NVRProfile represents an NVR configuration profile
@@ -254,22 +433,22 @@ func (n NullableJSON) Value() (driver.Value, error) {
 
 // Additional request/response models for handlers
 
-// CreateContractRequest represents a request to create a new contract
+// CreateContractRequest represents a request to create a new contract - UPDATED TO USE CustomDate
 type CreateContractRequest struct {
-	ServiceAddress    string    `json:"service_address" validate:"required"`
-	NotificationEmail *string   `json:"notification_email" validate:"omitempty,email"`
-	NotificationPhone *string   `json:"notification_phone" validate:"omitempty"`
-	StartDate         time.Time `json:"start_date" validate:"required"`
-	EndDate           time.Time `json:"end_date" validate:"required"`
+	ServiceAddress    string     `json:"service_address" validate:"required"`
+	NotificationEmail *string    `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string    `json:"notification_phone" validate:"omitempty"`
+	StartDate         CustomDate `json:"start_date" validate:"required"`
+	EndDate           CustomDate `json:"end_date" validate:"required"`
 }
 
-// UpdateContractRequest represents a request to update a contract
+// UpdateContractRequest represents a request to update a contract - UPDATED TO USE CustomDate
 type UpdateContractRequest struct {
-	ServiceAddress    *string    `json:"service_address"`
-	NotificationEmail *string    `json:"notification_email" validate:"omitempty,email"`
-	NotificationPhone *string    `json:"notification_phone"`
-	StartDate         *time.Time `json:"start_date"`
-	EndDate           *time.Time `json:"end_date"`
+	ServiceAddress    *string     `json:"service_address"`
+	NotificationEmail *string     `json:"notification_email" validate:"omitempty,email"`
+	NotificationPhone *string     `json:"notification_phone"`
+	StartDate         *CustomDate `json:"start_date"`
+	EndDate           *CustomDate `json:"end_date"`
 }
 
 // CreateCustomerRequest represents a request to create a new customer

@@ -41,6 +41,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authService)
 	customerHandler := handlers.NewCustomerHandler(database)
 	contractHandler := handlers.NewContractHandler(database)
+	serviceTierHandler := handlers.NewServiceTierHandler(database) // NEW: Service Tier Handler
 	diagnosticsHandler := handlers.NewDiagnosticsHandler(database)
 	rateLimitHandler := handlers.NewRateLimitHandler(database)
 
@@ -149,6 +150,7 @@ func main() {
 	customerRoutes.Use(authMiddleware.LogAPIUsage)  // Log API usage AFTER authentication
 	customerRoutes.HandleFunc("", customerHandler.GetCustomers).Methods("GET")
 	customerRoutes.HandleFunc("/{id:[0-9]+}", customerHandler.GetCustomer).Methods("GET")
+	customerRoutes.HandleFunc("/{id:[0-9]+}/contracts", customerHandler.GetCustomerWithContracts).Methods("GET") // NEW: Customer contracts endpoint
 
 	// Customer create routes
 	customerCreateRoutes := r.PathPrefix("/customers").Subrouter()
@@ -200,6 +202,36 @@ func main() {
 	contractDeleteRoutes.Use(authMiddleware.LogAPIUsage)  // Log API usage AFTER authentication
 	contractDeleteRoutes.HandleFunc("/{id:[0-9]+}", contractHandler.DeleteContract).Methods("DELETE")
 
+	// SERVICE TIER ROUTES - NEW SECTION
+	// Service Tier routes - with proper rate limiting
+	serviceTierRoutes := r.PathPrefix("/service-tiers").Subrouter()
+	serviceTierRoutes.Use(middleware.RateLimit(100, time.Hour))  // General rate limit
+	serviceTierRoutes.Use(authMiddleware.RequirePermission("service_tiers", "read"))
+	serviceTierRoutes.Use(authMiddleware.LogAPIUsage)
+	serviceTierRoutes.HandleFunc("", serviceTierHandler.GetServiceTiers).Methods("GET")
+	serviceTierRoutes.HandleFunc("/{id:[0-9]+}", serviceTierHandler.GetServiceTier).Methods("GET")
+
+	// Service tier create routes
+	serviceTierCreateRoutes := r.PathPrefix("/service-tiers").Subrouter()
+	serviceTierCreateRoutes.Use(middleware.RateLimit(10, time.Hour))  // Stricter limit for creates
+	serviceTierCreateRoutes.Use(authMiddleware.RequirePermission("service_tiers", "create"))
+	serviceTierCreateRoutes.Use(authMiddleware.LogAPIUsage)
+	serviceTierCreateRoutes.HandleFunc("", serviceTierHandler.CreateServiceTier).Methods("POST")
+
+	// Service tier update routes
+	serviceTierUpdateRoutes := r.PathPrefix("/service-tiers").Subrouter()
+	serviceTierUpdateRoutes.Use(middleware.RateLimit(50, time.Hour))  // Moderate limit for updates
+	serviceTierUpdateRoutes.Use(authMiddleware.RequirePermission("service_tiers", "update"))
+	serviceTierUpdateRoutes.Use(authMiddleware.LogAPIUsage)
+	serviceTierUpdateRoutes.HandleFunc("/{id:[0-9]+}", serviceTierHandler.UpdateServiceTier).Methods("PUT")
+
+	// Service tier delete routes
+	serviceTierDeleteRoutes := r.PathPrefix("/service-tiers").Subrouter()
+	serviceTierDeleteRoutes.Use(middleware.RateLimit(5, time.Hour))   // Very strict limit for deletes
+	serviceTierDeleteRoutes.Use(authMiddleware.RequirePermission("service_tiers", "delete"))
+	serviceTierDeleteRoutes.Use(authMiddleware.LogAPIUsage)
+	serviceTierDeleteRoutes.HandleFunc("/{id:[0-9]+}", serviceTierHandler.DeleteServiceTier).Methods("DELETE")
+
 	// Diagnostics routes (admin only) - with strict rate limiting
 	diagnosticsRoutes := r.PathPrefix("/diagnostics").Subrouter()
 	diagnosticsRoutes.Use(middleware.RateLimit(20, time.Hour))     // Very limited for diagnostics
@@ -241,6 +273,8 @@ func main() {
 	log.Printf("📊 API usage logging: ENABLED")
 	log.Printf("💾 Database: Connected")
 	log.Printf("🔑 JWT Auth: Enabled")
+	log.Printf("📋 Service Tiers: Enabled")
+	log.Printf("🤝 Contract-Customer Mapping: Enabled")
 	log.Println("────────────────────────────────────────")
 	log.Println("✅ API Server ready to accept connections")
 

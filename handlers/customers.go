@@ -23,9 +23,9 @@ func NewCustomerHandler(database *sqlx.DB) *CustomerHandler {
 
 // GetCustomers returns a list of all customers
 func (ch *CustomerHandler) GetCustomers(w http.ResponseWriter, r *http.Request) {
-	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number,
 		created_at, updated_at FROM Customer ORDER BY created_at DESC`
-	
+
 	var customers []models.Customer
 	err := ch.db.Select(&customers, query)
 	if err != nil {
@@ -45,9 +45,9 @@ func (ch *CustomerHandler) GetCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number,
 		created_at, updated_at FROM Customer WHERE customer_id = ?`
-	
+
 	var customer models.Customer
 	err = ch.db.Get(&customer, query, customerID)
 	if err != nil {
@@ -56,6 +56,52 @@ func (ch *CustomerHandler) GetCustomer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	WriteJSONResponse(w, http.StatusOK, customer)
+}
+
+// GetCustomerWithContracts returns a customer with their assigned contracts
+func (ch *CustomerHandler) GetCustomerWithContracts(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	customerID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		WriteErrorResponse(w, http.StatusBadRequest, "Invalid customer ID", "Customer ID must be a number")
+		return
+	}
+
+	// Get customer basic info
+	query := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number,
+		created_at, updated_at FROM Customer WHERE customer_id = ?`
+
+	var customerWithContracts models.CustomerWithContracts
+	err = ch.db.Get(&customerWithContracts, query, customerID)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusNotFound, "Customer not found", "")
+		return
+	}
+
+	// Get customer's contracts
+	contractQuery := `
+		SELECT 
+			c.contract_id, 
+			c.service_address, 
+			c.start_date, 
+			c.end_date,
+			st.name as service_tier_name
+		FROM Contract c
+		JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+		LEFT JOIN Contract_Service_Tier cst ON c.contract_id = cst.contract_id 
+			AND cst.start_date <= CURDATE() 
+			AND cst.end_date >= CURDATE()
+		LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
+		WHERE ccm.customer_id = ?
+		ORDER BY c.start_date DESC`
+
+	err = ch.db.Select(&customerWithContracts.Contracts, contractQuery, customerID)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to get customer contracts", err.Error())
+		return
+	}
+
+	WriteJSONResponse(w, http.StatusOK, customerWithContracts)
 }
 
 // CreateCustomer creates a new customer
@@ -83,10 +129,10 @@ func (ch *CustomerHandler) CreateCustomer(w http.ResponseWriter, r *http.Request
 	}
 
 	// Insert customer
-	query := `INSERT INTO Customer (name_on_contract, address, unique_id, email, phone_number) 
+	query := `INSERT INTO Customer (name_on_contract, address, unique_id, email, phone_number)
 		VALUES (?, ?, ?, ?, ?)`
-	
-	result, err := ch.db.Exec(query, req.NameOnContract, req.Address, 
+
+	result, err := ch.db.Exec(query, req.NameOnContract, req.Address,
 		req.UniqueID, req.Email, req.PhoneNumber)
 	if err != nil {
 		if IsUniqueConstraintError(err) {
@@ -105,9 +151,9 @@ func (ch *CustomerHandler) CreateCustomer(w http.ResponseWriter, r *http.Request
 
 	// Retrieve the created customer
 	var customer models.Customer
-	query = `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+	query = `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number,
 		created_at, updated_at FROM Customer WHERE customer_id = ?`
-	
+
 	err = ch.db.Get(&customer, query, customerID)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve created customer", err.Error())
@@ -147,7 +193,7 @@ func (ch *CustomerHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request
 	// Build dynamic update query
 	setParts := []string{}
 	args := []interface{}{}
-	
+
 	if req.NameOnContract != nil {
 		setParts = append(setParts, "name_on_contract = ?")
 		args = append(args, *req.NameOnContract)
@@ -175,7 +221,7 @@ func (ch *CustomerHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request
 	args = append(args, customerID)
 
 	query := "UPDATE Customer SET " + JoinStrings(setParts, ", ") + " WHERE customer_id = ?"
-	
+
 	_, err = ch.db.Exec(query, args...)
 	if err != nil {
 		if IsUniqueConstraintError(err) {
@@ -188,9 +234,9 @@ func (ch *CustomerHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request
 
 	// Retrieve updated customer
 	var customer models.Customer
-	selectQuery := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number, 
+	selectQuery := `SELECT customer_id, name_on_contract, address, unique_id, email, phone_number,
 		created_at, updated_at FROM Customer WHERE customer_id = ?`
-	
+
 	err = ch.db.Get(&customer, selectQuery, customerID)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to retrieve updated customer", err.Error())
@@ -200,7 +246,7 @@ func (ch *CustomerHandler) UpdateCustomer(w http.ResponseWriter, r *http.Request
 	WriteJSONResponse(w, http.StatusOK, customer)
 }
 
-// DeleteCustomer soft deletes a customer
+// DeleteCustomer deletes a customer (checks for contract assignments)
 func (ch *CustomerHandler) DeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	customerID, err := strconv.Atoi(vars["id"])
@@ -221,8 +267,22 @@ func (ch *CustomerHandler) DeleteCustomer(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Check if customer has any contracts assigned
+	var contractCount int
+	err = ch.db.Get(&contractCount, 
+		"SELECT COUNT(*) FROM Contract_Customer_Mapping WHERE customer_id = ?", customerID)
+	if err != nil {
+		WriteErrorResponse(w, http.StatusInternalServerError, "Database error", err.Error())
+		return
+	}
+	if contractCount > 0 {
+		WriteErrorResponse(w, http.StatusConflict, "Cannot delete customer", 
+			"Customer is assigned to contracts. Remove contract assignments first.")
+		return
+	}
+
 	query := `DELETE FROM Customer WHERE customer_id = ?`
-	
+
 	_, err = ch.db.Exec(query, customerID)
 	if err != nil {
 		WriteErrorResponse(w, http.StatusInternalServerError, "Failed to delete customer", err.Error())
