@@ -67,28 +67,25 @@ func validateContractDates(startDate, endDate models.CustomDate) error {
 // GetContracts returns a list of all contracts with customer and service tier info
 func (ch *ContractHandler) GetContracts(w http.ResponseWriter, r *http.Request) {
 	query := `
-		SELECT
-			c.contract_id,
-			c.service_address,
-			c.notification_email,
-			c.notification_phone,
-			c.start_date,
-			c.end_date,
-			c.created_at,
-			c.updated_at,
-			cust.customer_id,
-			cust.name_on_contract as customer_name,
-			st.service_tier_id,
-			st.name as service_tier_name
-		FROM Contract c
-		LEFT JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
-		LEFT JOIN Customer cust ON ccm.customer_id = cust.customer_id
-		LEFT JOIN Contract_Service_Tier cst ON c.contract_id = cst.contract_id
-			AND cst.start_date <= CURDATE()
-			AND cst.end_date >= CURDATE()
-		LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
-		ORDER BY c.created_at DESC`
-
+    	SELECT
+        	c.contract_id,
+        	c.service_address,
+        	c.notification_email,
+        	c.notification_phone,
+        	c.start_date,
+        	c.end_date,
+        	c.created_at,
+        	c.updated_at,
+        	cust.customer_id,
+        	cust.name_on_contract as customer_name,
+        	st.service_tier_id,
+        	st.name as service_tier_name
+    	FROM Contract c
+        	LEFT JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+        	LEFT JOIN Customer cust ON ccm.customer_id = cust.customer_id
+        	LEFT JOIN Contract_Service_Tier cst ON c.contract_id = cst.contract_id
+        	LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
+    	ORDER BY c.created_at DESC`
 	rows, err := ch.db.Query(query)
 	if err != nil {
 		log.Printf("Failed to query contracts: %v", err)
