@@ -304,6 +304,10 @@ func (a *AuthService) ChangePassword(userID int, currentPassword, newPassword st
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 
+	if err := a.invalidateUserSessions(userID); err != nil {
+		return fmt.Errorf("failed to invalidate user sessions: %w", err)
+	}
+
 	return nil
 }
 
