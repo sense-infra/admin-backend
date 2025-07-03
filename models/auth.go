@@ -24,12 +24,12 @@ func (p *Permissions) Scan(value interface{}) error {
 		*p = nil
 		return nil
 	}
-	
+
 	bytes, ok := value.([]byte)
 	if !ok {
 		return fmt.Errorf("cannot scan %T into Permissions", value)
 	}
-	
+
 	return json.Unmarshal(bytes, p)
 }
 
@@ -38,12 +38,12 @@ func (p Permissions) HasPermission(resource, action string) bool {
 	if p == nil {
 		return false
 	}
-	
+
 	actions, exists := p[resource]
 	if !exists {
 		return false
 	}
-	
+
 	for _, a := range actions {
 		if a == action {
 			return true
@@ -69,12 +69,12 @@ func (c *ContractAccess) Scan(value interface{}) error {
 		*c = nil
 		return nil
 	}
-	
+
 	bytes, ok := value.([]byte)
 	if !ok {
 		return fmt.Errorf("cannot scan %T into ContractAccess", value)
 	}
-	
+
 	return json.Unmarshal(bytes, c)
 }
 
@@ -83,7 +83,7 @@ func (c ContractAccess) HasAccess(contractID int) bool {
 	if c == nil {
 		return true // nil means access to all contracts
 	}
-	
+
 	for _, id := range c {
 		if id == contractID {
 			return true
@@ -121,7 +121,7 @@ type SystemUser struct {
 	CreatedBy            *int       `json:"created_by" db:"created_by"`
 	CreatedAt            time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at" db:"updated_at"`
-	
+
 	// Joined fields
 	Role     *UserRole    `json:"role,omitempty"`
 	Creator  *SystemUser  `json:"created_by_user,omitempty"`
@@ -147,7 +147,7 @@ type UserSession struct {
 	ExpiresAt    time.Time  `json:"expires_at" db:"expires_at"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	LastActivity time.Time  `json:"last_activity" db:"last_activity"`
-	
+
 	// Joined fields
 	User *SystemUser `json:"user,omitempty"`
 }
@@ -174,7 +174,7 @@ type APIKey struct {
 	ExpiresAt        *time.Time      `json:"expires_at" db:"expires_at"`
 	CreatedAt        time.Time       `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at" db:"updated_at"`
-	
+
 	// Joined fields
 	Creator *SystemUser `json:"created_by_user,omitempty"`
 }
@@ -197,7 +197,7 @@ type APIKeyUsageLog struct {
 	RequestSizeBytes  *int       `json:"request_size_bytes" db:"request_size_bytes"`
 	ResponseSizeBytes *int       `json:"response_size_bytes" db:"response_size_bytes"`
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
-	
+
 	// Joined fields
 	APIKey *APIKey `json:"api_key,omitempty"`
 }
@@ -291,8 +291,57 @@ func (ac *AuthContext) CanAccessContract(contractID int) bool {
 	if !ac.IsAPIKey {
 		return ac.HasPermission("contracts", "read")
 	}
-	
+
 	// For API keys, this would need to be checked against the API key's contract access
 	// This method would need access to the API key data
 	return true // Simplified for now
+}
+
+// Role Management Models
+
+// CreateRoleRequest represents a request to create a new role
+type CreateRoleRequest struct {
+	Name        string      `json:"name"`
+	Description *string     `json:"description"`
+	Permissions Permissions `json:"permissions"`
+	Active      *bool       `json:"active"`
+}
+
+// UpdateRoleRequest represents a request to update a role
+type UpdateRoleRequest struct {
+	Name        *string      `json:"name"`
+	Description *string      `json:"description"`
+	Permissions *Permissions `json:"permissions"`
+	Active      *bool        `json:"active"`
+}
+
+// RoleWithStats represents a role with complete user statistics
+type RoleWithStats struct {
+	RoleID            int         `json:"role_id" db:"role_id"`
+	Name              string      `json:"name" db:"name"`
+	Description       *string     `json:"description" db:"description"`
+	Permissions       Permissions `json:"permissions" db:"permissions"`
+	Active            bool        `json:"active" db:"active"`
+	CreatedAt         time.Time   `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time   `json:"updated_at" db:"updated_at"`
+	
+	// ENHANCED: Complete user count breakdown
+	TotalUserCount    int         `json:"total_user_count" db:"total_user_count"`      // All users (active + inactive)
+	ActiveUserCount   int         `json:"active_user_count" db:"active_user_count"`    // Only active users
+	InactiveUserCount int         `json:"inactive_user_count" db:"inactive_user_count"` // Only inactive users
+	
+	// DEPRECATED: Keep for backward compatibility, but use TotalUserCount instead
+	UserCount         int         `json:"user_count" db:"total_user_count"`
+}
+
+// UserRoleAssignment represents a user's role assignment with additional details
+type UserRoleAssignment struct {
+	UserID       int        `json:"user_id" db:"user_id"`
+	Username     string     `json:"username" db:"username"`
+	Email        string     `json:"email" db:"email"`
+	FirstName    *string    `json:"first_name" db:"first_name"`
+	LastName     *string    `json:"last_name" db:"last_name"`
+	Active       bool       `json:"active" db:"active"`
+	LastLogin    *time.Time `json:"last_login" db:"last_login"`
+	AssignedAt   time.Time  `json:"assigned_at" db:"created_at"`
 }

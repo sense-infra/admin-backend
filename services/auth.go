@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"log"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jmoiron/sqlx"
@@ -28,6 +29,11 @@ var (
 	ErrAPIKeyRateLimited  = errors.New("API key rate limit exceeded")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrSessionExpired     = errors.New("session has expired")
+	ErrRoleNotFound           = errors.New("role not found")
+	ErrRoleAlreadyExists      = errors.New("role already exists")
+	ErrCannotModifySystemRole = errors.New("cannot modify system role")
+	ErrCannotDeleteSystemRole = errors.New("cannot delete system role")
+	ErrRoleInUse             = errors.New("role is currently assigned to users")
 )
 
 type AuthService struct {
@@ -431,7 +437,7 @@ func (a *AuthService) AdminResetPassword(adminUserID, targetUserID int, newPassw
 	}
 
 	// Prevent admins from changing other admin passwords unless they're super admin
-	if targetUser.Role.Name == "admin" && adminUser.Role.Name != "super_admin" && adminUserID != targetUserID {
+	if targetUser.Role.Name == "admin" && adminUser.Username != "admin" && adminUserID != targetUserID {
 		return fmt.Errorf("insufficient permissions to reset admin user password")
 	}
 
@@ -492,13 +498,13 @@ func (a *AuthService) invalidateUserSessions(userID int) error {
 
 // GetAllUsers returns all users with their roles
 func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
-	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions,
+	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions, r.active as role_active,
 		creator.username as creator_username
-		FROM System_User u 
-		JOIN User_Role r ON u.role_id = r.role_id 
+		FROM System_User u
+		JOIN User_Role r ON u.role_id = r.role_id
 		LEFT JOIN System_User creator ON u.created_by = creator.user_id
 		ORDER BY u.created_at DESC`
-	
+
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query users: %w", err)
@@ -510,6 +516,7 @@ func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
 		var user models.SystemUser
 		var roleName string
 		var rolePermissions models.Permissions
+		var roleActive bool
 		var creatorUsername *string
 
 		err := rows.Scan(
@@ -518,6 +525,7 @@ func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
 			&user.LastLogin, &user.FailedLoginAttempts, &user.LockedUntil,
 			&user.PasswordChangedAt, &user.Active, &user.CreatedBy,
 			&user.CreatedAt, &user.UpdatedAt, &roleName, &rolePermissions,
+			&roleActive,
 			&creatorUsername,
 		)
 		if err != nil {
@@ -528,6 +536,7 @@ func (a *AuthService) GetAllUsers() ([]*models.SystemUser, error) {
 			RoleID:      user.RoleID,
 			Name:        roleName,
 			Permissions: rolePermissions,
+			Active:      roleActive,
 		}
 
 		if creatorUsername != nil {
@@ -811,19 +820,6 @@ func (a *AuthService) GetAPIKeyUsage(apiKeyID int) (*APIKeyUsageStats, error) {
 	return &stats, nil
 }
 
-// GetAllRoles returns all available roles
-func (a *AuthService) GetAllRoles() ([]*models.UserRole, error) {
-	query := `SELECT * FROM User_Role WHERE active = TRUE ORDER BY name`
-	
-	var roles []*models.UserRole
-	err := a.db.Select(&roles, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get roles: %w", err)
-	}
-
-	return roles, nil
-}
-
 // APIKeyUsageStats represents usage statistics for an API key
 type APIKeyUsageStats struct {
 	APIKey              models.APIKey `json:"api_key"`
@@ -845,60 +841,86 @@ func (a *AuthService) GetAPIKeyByID(apiKeyID int) (*models.APIKey, error) {
 // Helper methods
 
 func (a *AuthService) getUserByUsername(username string) (*models.SystemUser, error) {
-	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions
-		FROM System_User u 
-		JOIN User_Role r ON u.role_id = r.role_id 
+	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions, r.active as role_active
+		FROM System_User u
+		JOIN User_Role r ON u.role_id = r.role_id
 		WHERE u.username = ?`
-	
+
 	var user models.SystemUser
 	var roleName string
 	var rolePermissions models.Permissions
-	
+	var roleActive bool
+
 	err := a.db.QueryRow(query, username).Scan(
 		&user.UserID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.RoleID, &user.FirstName, &user.LastName, &user.ForcePasswordChange,
 		&user.LastLogin, &user.FailedLoginAttempts, &user.LockedUntil,
 		&user.PasswordChangedAt, &user.Active, &user.CreatedBy,
-		&user.CreatedAt, &user.UpdatedAt, &roleName, &rolePermissions,
+		&user.CreatedAt, &user.UpdatedAt, &roleName, &rolePermissions, &roleActive,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	user.Role = &models.UserRole{
-		RoleID:      user.RoleID,
-		Name:        roleName,
-		Permissions: rolePermissions,
+	// SECURITY FIX: Only assign permissions if role is active
+	if roleActive {
+		user.Role = &models.UserRole{
+			RoleID:      user.RoleID,
+			Name:        roleName,
+			Permissions: rolePermissions,
+			Active:      roleActive,
+		}
+	} else {
+		// Role is inactive - assign empty permissions
+		user.Role = &models.UserRole{
+			RoleID:      user.RoleID,
+			Name:        roleName,
+			Permissions: models.Permissions{}, // Empty permissions map
+			Active:      roleActive,
+		}
 	}
 
 	return &user, nil
 }
 
 func (a *AuthService) getUserByID(userID int) (*models.SystemUser, error) {
-	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions
-		FROM System_User u 
-		JOIN User_Role r ON u.role_id = r.role_id 
+	query := `SELECT u.*, r.name as role_name, r.permissions as role_permissions, r.active as role_active
+		FROM System_User u
+		JOIN User_Role r ON u.role_id = r.role_id
 		WHERE u.user_id = ?`
-	
+
 	var user models.SystemUser
 	var roleName string
 	var rolePermissions models.Permissions
-	
+	var roleActive bool
+
 	err := a.db.QueryRow(query, userID).Scan(
 		&user.UserID, &user.Username, &user.Email, &user.PasswordHash,
 		&user.RoleID, &user.FirstName, &user.LastName, &user.ForcePasswordChange,
 		&user.LastLogin, &user.FailedLoginAttempts, &user.LockedUntil,
 		&user.PasswordChangedAt, &user.Active, &user.CreatedBy,
-		&user.CreatedAt, &user.UpdatedAt, &roleName, &rolePermissions,
+		&user.CreatedAt, &user.UpdatedAt, &roleName, &rolePermissions, &roleActive,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	user.Role = &models.UserRole{
-		RoleID:      user.RoleID,
-		Name:        roleName,
-		Permissions: rolePermissions,
+	// SECURITY FIX: Only assign permissions if role is active
+	if roleActive {
+		user.Role = &models.UserRole{
+			RoleID:      user.RoleID,
+			Name:        roleName,
+			Permissions: rolePermissions,
+			Active:      roleActive,
+		}
+	} else {
+		// Role is inactive - assign empty permissions
+		user.Role = &models.UserRole{
+			RoleID:      user.RoleID,
+			Name:        roleName,
+			Permissions: models.Permissions{}, // Empty permissions map
+			Active:      roleActive,
+		}
 	}
 
 	return &user, nil
@@ -1020,4 +1042,416 @@ func (a *AuthService) hashToken(token string) string {
 func (a *AuthService) hashAPIKey(key string) string {
 	hash := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(hash[:])
+}
+
+// GetRoleByID retrieves a role by its ID
+func (s *AuthService) GetRoleByID(roleID int) (*models.UserRole, error) {
+	query := `
+		SELECT role_id, name, description, permissions, active, created_at, updated_at
+		FROM User_Role 
+		WHERE role_id = ?
+	`
+	
+	var role models.UserRole
+	err := s.db.Get(&role, query, roleID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrRoleNotFound
+		}
+		return nil, fmt.Errorf("failed to get role: %w", err)
+	}
+	
+	return &role, nil
+}
+
+// CreateRole creates a new role
+func (s *AuthService) CreateRole(req *models.CreateRoleRequest, createdBy *int) (*models.UserRole, error) {
+	// Check if role name already exists
+	var count int
+	err := s.db.Get(&count, "SELECT COUNT(*) FROM User_Role WHERE name = ?", req.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check role existence: %w", err)
+	}
+	if count > 0 {
+		return nil, ErrRoleAlreadyExists
+	}
+
+	// Set default active status if not provided
+	active := true
+	if req.Active != nil {
+		active = *req.Active
+	}
+
+	// Insert the new role
+	query := `
+		INSERT INTO User_Role (name, description, permissions, active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, NOW(), NOW())
+	`
+	
+	result, err := s.db.Exec(query, req.Name, req.Description, req.Permissions, active)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create role: %w", err)
+	}
+	
+	roleID, err := result.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get role ID: %w", err)
+	}
+	
+	// Return the created role
+	return s.GetRoleByID(int(roleID))
+}
+
+// UpdateRole updates an existing role
+func (s *AuthService) UpdateRole(roleID int, req *models.UpdateRoleRequest) (*models.UserRole, error) {
+	// First, get the existing role
+	existingRole, err := s.GetRoleByID(roleID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if it's a system role that shouldn't be modified
+	if s.isSystemRole(existingRole.Name) {
+		return nil, ErrCannotModifySystemRole
+	}
+
+	// Build update query dynamically
+	setParts := []string{}
+	args := []interface{}{}
+
+	if req.Name != nil {
+		// Check if new name conflicts with existing roles (excluding current role)
+		var count int
+		err := s.db.Get(&count, "SELECT COUNT(*) FROM User_Role WHERE name = ? AND role_id != ?", *req.Name, roleID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check role name conflict: %w", err)
+		}
+		if count > 0 {
+			return nil, ErrRoleAlreadyExists
+		}
+		setParts = append(setParts, "name = ?")
+		args = append(args, *req.Name)
+	}
+
+	if req.Description != nil {
+		setParts = append(setParts, "description = ?")
+		args = append(args, req.Description)
+	}
+
+	if req.Permissions != nil {
+		setParts = append(setParts, "permissions = ?")
+		args = append(args, *req.Permissions)
+	}
+
+	if req.Active != nil {
+		setParts = append(setParts, "active = ?")
+		args = append(args, *req.Active)
+	}
+
+	if len(setParts) == 0 {
+		// No changes requested, return existing role
+		return existingRole, nil
+	}
+
+	// Add updated_at and role_id to query
+	setParts = append(setParts, "updated_at = NOW()")
+	args = append(args, roleID)
+
+	query := fmt.Sprintf("UPDATE User_Role SET %s WHERE role_id = ?", strings.Join(setParts, ", "))
+	
+	_, err = s.db.Exec(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update role: %w", err)
+	}
+
+	// Return the updated role
+	return s.GetRoleByID(roleID)
+}
+
+// GetRolesWithStats retrieves all roles with COMPLETE user count statistics (active + inactive)
+func (s *AuthService) GetRolesWithStats() ([]models.RoleWithStats, error) {
+	query := `
+		SELECT
+			r.role_id,
+			r.name,
+			r.description,
+			r.permissions,
+			r.active,
+			r.created_at,
+			r.updated_at,
+			COALESCE(user_counts.total_user_count, 0) as total_user_count,
+			COALESCE(user_counts.active_user_count, 0) as active_user_count,
+			COALESCE(user_counts.inactive_user_count, 0) as inactive_user_count
+		FROM User_Role r
+		LEFT JOIN (
+			SELECT 
+				role_id, 
+				COUNT(*) as total_user_count,
+				COUNT(CASE WHEN active = 1 THEN 1 END) as active_user_count,
+				COUNT(CASE WHEN active = 0 THEN 1 END) as inactive_user_count
+			FROM System_User
+			GROUP BY role_id
+		) user_counts ON r.role_id = user_counts.role_id
+		ORDER BY r.name
+	`
+
+	var roles []models.RoleWithStats
+	err := s.db.Select(&roles, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles with stats: %w", err)
+	}
+
+	return roles, nil
+}
+
+// GetRoleUsers retrieves users assigned to a specific role
+func (s *AuthService) GetRoleUsers(roleID int) ([]models.UserRoleAssignment, error) {
+	// First check if role exists
+	_, err := s.GetRoleByID(roleID)
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT 
+			u.user_id,
+			u.username,
+			u.email,
+			u.first_name,
+			u.last_name,
+			u.active,
+			u.last_login,
+			u.created_at
+		FROM System_User u
+		WHERE u.role_id = ?
+		ORDER BY u.username
+	`
+	
+	var users []models.UserRoleAssignment
+	err = s.db.Select(&users, query, roleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get role users: %w", err)
+	}
+	
+	return users, nil
+}
+
+// Update your existing GetAllRoles method to use GetRolesWithStats:
+func (s *AuthService) GetRoles() ([]models.RoleWithStats, error) {
+	return s.GetRolesWithStats()
+}
+
+// If you have an existing GetAllRoles method, you can replace it or keep both:
+func (s *AuthService) GetAllRoles() ([]models.UserRole, error) {
+	query := `
+		SELECT role_id, name, description, permissions, active, created_at, updated_at
+		FROM User_Role 
+		ORDER BY name
+	`
+	
+	var roles []models.UserRole
+	err := s.db.Select(&roles, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get roles: %w", err)
+	}
+	
+	return roles, nil
+}
+
+// DeleteRole deletes a role (FIXED VERSION)
+func (s *AuthService) DeleteRole(roleID int) error {
+	// First, get the role to check if it exists and if it's a system role
+	role, err := s.GetRoleByID(roleID)
+	if err != nil {
+		return err
+	}
+
+	// Check if it's a system role that shouldn't be deleted
+	if s.isSystemRole(role.Name) {
+		return ErrCannotDeleteSystemRole
+	}
+
+	// Check if any ACTIVE users are assigned to this role
+	var userCount int
+	err = s.db.Get(&userCount, "SELECT COUNT(*) FROM System_User WHERE role_id = ? AND active = 1", roleID)
+	if err != nil {
+		return fmt.Errorf("failed to check role usage: %w", err)
+	}
+	if userCount > 0 {
+		return ErrRoleInUse
+	}
+
+	// Start a transaction for safe deletion
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete the role
+	result, err := tx.Exec("DELETE FROM User_Role WHERE role_id = ?", roleID)
+	if err != nil {
+		return fmt.Errorf("failed to delete role: %w", err)
+	}
+
+	// Check if role was actually deleted
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return ErrRoleNotFound
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit role deletion: %w", err)
+	}
+
+	return nil
+}
+
+// GetRoleUsageInfo returns detailed information about role usage (ENHANCED VERSION)
+func (s *AuthService) GetRoleUsageInfo(roleID int) (*RoleUsageInfo, error) {
+	// Get role details
+	role, err := s.GetRoleByID(roleID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get COMPLETE user count statistics (active and inactive)
+	var totalUserCount, activeUserCount, inactiveUserCount int
+
+	// Single query to get all counts efficiently
+	err = s.db.QueryRow(`
+		SELECT 
+			COUNT(*) as total_users,
+			COUNT(CASE WHEN active = 1 THEN 1 END) as active_users,
+			COUNT(CASE WHEN active = 0 THEN 1 END) as inactive_users
+		FROM System_User 
+		WHERE role_id = ?`, roleID).Scan(&totalUserCount, &activeUserCount, &inactiveUserCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user counts: %w", err)
+	}
+
+	// Get list of ALL users assigned to this role (both active and inactive)
+	var users []RoleUser
+	err = s.db.Select(&users, `
+		SELECT user_id, username, email, first_name, last_name, active, last_login, created_at
+		FROM System_User
+		WHERE role_id = ?
+		ORDER BY active DESC, username`, roleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get role users: %w", err)
+	}
+
+	return &RoleUsageInfo{
+		Role:              *role,
+		TotalUserCount:    totalUserCount,    // FIXED: Include total count
+		ActiveUserCount:   activeUserCount,
+		InactiveUserCount: inactiveUserCount,
+		Users:             users,
+		CanDelete:         activeUserCount == 0 && !s.isSystemRole(role.Name), // Only check active users for deletion
+		IsSystemRole:      s.isSystemRole(role.Name),
+	}, nil
+}
+
+// RoleUsageInfo represents detailed role usage information (ENHANCED)
+type RoleUsageInfo struct {
+	Role              models.UserRole `json:"role"`
+	TotalUserCount    int             `json:"total_user_count"`     // ADDED: Total users (active + inactive)
+	ActiveUserCount   int             `json:"active_user_count"`
+	InactiveUserCount int             `json:"inactive_user_count"`
+	Users             []RoleUser      `json:"users"`
+	CanDelete         bool            `json:"can_delete"`
+	IsSystemRole      bool            `json:"is_system_role"`
+}
+
+// RoleUser represents a user assigned to a role
+type RoleUser struct {
+	UserID    int        `json:"user_id" db:"user_id"`
+	Username  string     `json:"username" db:"username"`
+	Email     string     `json:"email" db:"email"`
+	FirstName *string    `json:"first_name" db:"first_name"`
+	LastName  *string    `json:"last_name" db:"last_name"`
+	Active    bool       `json:"active" db:"active"`
+	LastLogin *time.Time `json:"last_login" db:"last_login"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+}
+
+// isSystemRole checks if a role is a system role that shouldn't be modified/deleted
+func (s *AuthService) isSystemRole(roleName string) bool {
+	systemRoles := []string{"admin", "viewer"}
+	for _, systemRole := range systemRoles {
+		if strings.ToLower(roleName) == systemRole {
+			return true
+		}
+	}
+	return false
+}
+
+// DeactivateRole sets a role as inactive instead of deleting it
+func (s *AuthService) DeactivateRole(roleID int) error {
+	// Get the role first
+	role, err := s.GetRoleByID(roleID)
+	if err != nil {
+		return err
+	}
+
+	// Check if it's a system role
+	if s.isSystemRole(role.Name) {
+		return ErrCannotModifySystemRole
+	}
+
+	// Deactivate the role
+	_, err = s.db.Exec("UPDATE User_Role SET active = FALSE, updated_at = NOW() WHERE role_id = ?", roleID)
+	if err != nil {
+		return fmt.Errorf("failed to deactivate role: %w", err)
+	}
+
+	return nil
+}
+
+// ReassignUsersToRole reassigns all users from one role to another
+func (s *AuthService) ReassignUsersToRole(fromRoleID, toRoleID int) error {
+	// Verify both roles exist
+	_, err := s.GetRoleByID(fromRoleID)
+	if err != nil {
+		return fmt.Errorf("source role not found: %w", err)
+	}
+
+	_, err = s.GetRoleByID(toRoleID)
+	if err != nil {
+		return fmt.Errorf("target role not found: %w", err)
+	}
+
+	// Start transaction
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Update all users from the old role to the new role
+	result, err := tx.Exec(`
+		UPDATE System_User 
+		SET role_id = ?, updated_at = NOW() 
+		WHERE role_id = ? AND active = 1`, toRoleID, fromRoleID)
+	if err != nil {
+		return fmt.Errorf("failed to reassign users: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit user reassignment: %w", err)
+	}
+
+	log.Printf("Successfully reassigned %d users from role %d to role %d", rowsAffected, fromRoleID, toRoleID)
+	return nil
 }
