@@ -230,6 +230,7 @@ type CreateUserRequest struct {
 	FirstName *string `json:"first_name" validate:"omitempty,max=100"`
 	LastName  *string `json:"last_name" validate:"omitempty,max=100"`
 	Password  *string `json:"password" validate:"omitempty,min=8"` // Optional, will generate if not provided
+	Active    *bool   `json:"active"`
 }
 
 // UpdateUserRequest represents a request to update a user
