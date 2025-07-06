@@ -336,13 +336,19 @@ func (a *AuthService) CreateUser(req *models.CreateUserRequest, createdBy int) (
 		return nil, "", fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Insert user
-	query := `INSERT INTO System_User 
-		(username, email, password_hash, role_id, first_name, last_name, created_by, force_password_change) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)`
+	// Determine active status (default to true if not specified)
+	active := true
+	if req.Active != nil {
+		active = *req.Active
+	}
 
-	result, err := a.db.Exec(query, req.Username, req.Email, string(hashedPassword), 
-		req.RoleID, req.FirstName, req.LastName, createdBy)
+	// Insert user
+	query := `INSERT INTO System_User
+		(username, email, password_hash, role_id, first_name, last_name, active, created_by)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+
+	result, err := a.db.Exec(query, req.Username, req.Email, string(hashedPassword),
+		req.RoleID, req.FirstName, req.LastName, active, createdBy)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create user: %w", err)
 	}
