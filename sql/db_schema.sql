@@ -1,10 +1,9 @@
 -- =========================================
--- SENSE SECURITY PLATFORM - DATABASE SCHEMA
--- Tables and Structure Only (No Data)
+-- SENSE SECURITY PLATFORM - COMPLETE DATABASE SCHEMA
+-- Includes Customer Authentication and Views
 -- =========================================
 
--- Customer Table
--- Purpose: Stores information about clients.
+-- Customer Table (UPDATED with authentication fields)
 CREATE TABLE Customer (
     customer_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the customer',
     name_on_contract VARCHAR(255) NOT NULL COMMENT 'Name of the person on the contract',
@@ -12,12 +11,44 @@ CREATE TABLE Customer (
     unique_id VARCHAR(255) NOT NULL UNIQUE COMMENT 'Unique identifier for the customer (e.g., government ID or internal ID)',
     email VARCHAR(255) COMMENT 'Email address of the customer',
     phone_number VARCHAR(15) COMMENT 'Contact phone number of the customer',
+    
+    -- AUTHENTICATION FIELDS
+    password_hash VARCHAR(255) COMMENT 'Bcrypt hashed password for customer login',
+    force_password_change BOOLEAN DEFAULT TRUE COMMENT 'Force password change on next login',
+    last_login TIMESTAMP NULL COMMENT 'Last successful login timestamp',
+    failed_login_attempts INT DEFAULT 0 COMMENT 'Number of consecutive failed login attempts',
+    locked_until TIMESTAMP NULL COMMENT 'Account locked until this timestamp',
+    password_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'When password was last changed',
+    active BOOLEAN DEFAULT TRUE COMMENT 'Whether customer account is active',
+    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp when the customer record was created',
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Timestamp when the customer record was last updated'
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Timestamp when the customer record was last updated',
+    
+    -- INDEXES
+    INDEX idx_customer_email (email),
+    INDEX idx_customer_active (active),
+    INDEX idx_customer_locked (locked_until)
+);
+
+-- Customer Session Table
+CREATE TABLE Customer_Session (
+    session_id VARCHAR(255) PRIMARY KEY COMMENT 'Unique session identifier (JWT jti)',
+    customer_id INT NOT NULL COMMENT 'Reference to the customer',
+    token_hash VARCHAR(255) NOT NULL COMMENT 'SHA256 hash of the JWT token',
+    ip_address VARCHAR(45) COMMENT 'IP address of the session',
+    user_agent TEXT COMMENT 'User agent string',
+    expires_at TIMESTAMP NOT NULL COMMENT 'When the session expires',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (customer_id) REFERENCES Customer(customer_id),
+
+    INDEX idx_customer_id (customer_id),
+    INDEX idx_expires_at (expires_at),
+    INDEX idx_token_hash (token_hash)
 );
 
 -- Contract Table
--- Purpose: Stores information about contracts.
 CREATE TABLE Contract (
     contract_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the contract',
     service_address TEXT NOT NULL COMMENT 'Physical address where the service is provided',
@@ -36,7 +67,6 @@ CREATE TABLE Contract (
 );
 
 -- Contract_Customer_Mapping Table
--- Purpose: Maps contracts to customers (allowing multiple customers per contract).
 CREATE TABLE Contract_Customer_Mapping (
     contract_customer_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     contract_id INT NOT NULL COMMENT 'Reference to the contract',
@@ -48,7 +78,6 @@ CREATE TABLE Contract_Customer_Mapping (
 );
 
 -- Service_Tier Table
--- Purpose: Stores different service tiers (e.g., Gold, Silver).
 CREATE TABLE Service_Tier (
     service_tier_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the service tier',
     name VARCHAR(50) NOT NULL COMMENT 'Name of the service tier (e.g., Gold, Silver)',
@@ -59,7 +88,6 @@ CREATE TABLE Service_Tier (
 );
 
 -- Contract_Service_Tier Table
--- Purpose: Tracks service tier assignments to contracts, including the validity period.
 CREATE TABLE Contract_Service_Tier (
     contract_service_tier_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the service tier assignment',
     contract_id INT NOT NULL COMMENT 'Reference to the contract',
@@ -83,7 +111,6 @@ CREATE UNIQUE INDEX idx_contract_active_tier
     ON Contract_Service_Tier(contract_id, start_date, end_date);
 
 -- NVR_Profile Table
--- Purpose: Stores configuration profiles for NVR integration with controllers.
 CREATE TABLE NVR_Profile (
     profile_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the NVR profile',
     name VARCHAR(100) NOT NULL COMMENT 'Profile name (e.g., "Dahua-8Channel-4K")',
@@ -98,7 +125,6 @@ CREATE TABLE NVR_Profile (
 );
 
 -- NVR Table
--- Purpose: Stores details about NVRs (Network Video Recorders).
 CREATE TABLE NVR (
     nvr_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the NVR',
     model VARCHAR(255) NOT NULL COMMENT 'Model of the NVR',
@@ -114,7 +140,6 @@ CREATE TABLE NVR (
 );
 
 -- Camera Table
--- Purpose: Stores details about security cameras.
 CREATE TABLE Camera (
     camera_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the camera',
     name VARCHAR(100) NOT NULL COMMENT 'User-defined name for the camera',
@@ -134,7 +159,6 @@ CREATE TABLE Camera (
 );
 
 -- TPM_Device Table
--- Purpose: Stores Trusted Platform Module security device information.
 CREATE TABLE TPM_Device (
     tmp_device_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the TPM device',
     manufacturer VARCHAR(100) NOT NULL COMMENT 'TPM manufacturer (e.g., Infineon)',
@@ -148,7 +172,6 @@ CREATE TABLE TPM_Device (
 );
 
 -- Controller Table
--- Purpose: Stores details about controllers with enhanced security fields.
 CREATE TABLE Controller (
     controller_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the controller',
     type VARCHAR(50) NOT NULL COMMENT 'Type of the controller (e.g., Raspberry Pi)',
@@ -170,7 +193,6 @@ CREATE TABLE Controller (
 );
 
 -- VPN_Config Table
--- Purpose: Stores centralized WireGuard VPN server configuration.
 CREATE TABLE VPN_Config (
     vpn_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for VPN configuration',
     name VARCHAR(100) NOT NULL COMMENT 'Configuration name (e.g., "Primary_WireGuard")',
@@ -186,7 +208,6 @@ CREATE TABLE VPN_Config (
 );
 
 -- Controller_VPN_Mapping Table
--- Purpose: Maps controllers to VPN configurations with client-specific settings.
 CREATE TABLE Controller_VPN_Mapping (
     mapping_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     controller_id INT NOT NULL UNIQUE COMMENT 'Reference to the controller',
@@ -203,7 +224,6 @@ CREATE TABLE Controller_VPN_Mapping (
 );
 
 -- Contract_NVR_Mapping Table
--- Purpose: Maps contracts to their NVRs.
 CREATE TABLE Contract_NVR_Mapping (
     contract_nvr_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     contract_id INT NOT NULL COMMENT 'Reference to the contract',
@@ -215,7 +235,6 @@ CREATE TABLE Contract_NVR_Mapping (
 );
 
 -- NVR_Camera_Mapping Table
--- Purpose: Maps NVRs to Cameras (one NVR can have many cameras).
 CREATE TABLE NVR_Camera_Mapping (
     nvr_camera_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     nvr_id INT NOT NULL COMMENT 'Reference to the NVR',
@@ -231,7 +250,6 @@ CREATE TABLE NVR_Camera_Mapping (
 );
 
 -- NVR_Controller_Mapping Table
--- Purpose: Maps NVRs to Controllers (one NVR can have many controllers for load balancing).
 CREATE TABLE NVR_Controller_Mapping (
     nvr_controller_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     nvr_id INT NOT NULL COMMENT 'Reference to the NVR',
@@ -243,8 +261,6 @@ CREATE TABLE NVR_Controller_Mapping (
 );
 
 -- Controller_Camera_Support Table
--- Purpose: Specifies which cameras (of the NVR the controller is mapped to) are supported by the controller.
--- This is CRITICAL for load balancing - each controller handles only ~5 cameras even if NVR has 10+
 CREATE TABLE Controller_Camera_Support (
     controller_camera_support_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the support mapping',
     controller_id INT NOT NULL COMMENT 'Reference to the controller',
@@ -261,7 +277,6 @@ CREATE TABLE Controller_Camera_Support (
 );
 
 -- SSH_Key Table
--- Purpose: Stores SSH public keys for remote access.
 CREATE TABLE SSH_Key (
     ssh_key_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the SSH key',
     key_type VARCHAR(50) NOT NULL COMMENT 'Type of the SSH key (e.g., RSA, ED25519)',
@@ -271,7 +286,6 @@ CREATE TABLE SSH_Key (
 );
 
 -- Controller_SSH_Key_Mapping Table
--- Purpose: Maps controllers to their SSH keys (one controller can have many SSH keys).
 CREATE TABLE Controller_SSH_Key_Mapping (
     controller_ssh_key_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     controller_id INT NOT NULL COMMENT 'Reference to the controller',
@@ -283,7 +297,6 @@ CREATE TABLE Controller_SSH_Key_Mapping (
 );
 
 -- X509_Certificate Table
--- Purpose: Stores X.509 certificate details.
 CREATE TABLE X509_Certificate (
     certificate_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the certificate',
     common_name VARCHAR(255) NOT NULL COMMENT 'Common name of the certificate',
@@ -300,7 +313,6 @@ CREATE TABLE X509_Certificate (
 );
 
 -- Controller_Certificate_Mapping Table
--- Purpose: Maps controllers to their X.509 certificates (one controller can have many certificates).
 CREATE TABLE Controller_Certificate_Mapping (
     controller_certificate_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the mapping',
     controller_id INT NOT NULL COMMENT 'Reference to the controller',
@@ -314,10 +326,6 @@ CREATE TABLE Controller_Certificate_Mapping (
 -- ========================================
 -- UNIFIED EVENT SYSTEM WITH ADVANCED INCIDENT TRACKING
 -- ========================================
--- All events that customers/admins need to see in timeline view
--- Supports incident grouping: main event (person detected) + related sub-events (talk-back, escalation)
--- Advanced incident management: manual combining, auto-detection, event type rules
--- High-frequency metrics (CPU usage, bandwidth) will go to InfluxDB separately
 
 CREATE TABLE Security_Event (
     event_id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for all security events',
@@ -396,12 +404,7 @@ CREATE TABLE Security_Event (
     INDEX idx_auto_incident (auto_generated_incident, event_timestamp DESC)
 );
 
--- ========================================
--- EVENT TYPE BUSINESS RULES
--- ========================================
--- Defines which event types can be root events vs sub-events
--- This controls incident management business logic
-
+-- Event_Type_Rules Table
 CREATE TABLE Event_Type_Rules (
     rule_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for the rule',
     event_type ENUM(
@@ -432,11 +435,8 @@ CREATE TABLE Event_Type_Rules (
 -- ========================================
 -- RF SIGNAL JAMMING DETECTION SYSTEM
 -- ========================================
--- RTL-SDR based frequency monitoring for detecting signal jamming attacks
--- Supports customer-specific frequency monitoring and threshold configuration
 
 -- RF_Frequency_Profile Table
--- Purpose: Master list of frequencies to monitor with default thresholds and descriptions
 CREATE TABLE RF_Frequency_Profile (
     frequency_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for frequency profile',
     frequency_mhz DECIMAL(8,3) NOT NULL COMMENT 'Frequency in MHz (e.g., 433.920 for 433.92 MHz)',
@@ -479,7 +479,6 @@ CREATE TABLE RF_Frequency_Profile (
 );
 
 -- Contract_RF_Monitoring Table  
--- Purpose: Customer-specific RF monitoring configuration with threshold overrides
 CREATE TABLE Contract_RF_Monitoring (
     contract_rf_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Unique identifier for contract RF monitoring',
     contract_id INT NOT NULL COMMENT 'Reference to the contract',
@@ -507,3 +506,155 @@ CREATE TABLE Contract_RF_Monitoring (
     INDEX idx_contract_enabled (contract_id, enabled),
     INDEX idx_frequency_enabled (frequency_id, enabled)
 );
+
+-- =========================================
+-- CUSTOMER DATA ACCESS VIEWS
+-- These views provide secure, scoped access to customer data
+-- =========================================
+
+-- Customer's contracts with current service tier
+CREATE VIEW Customer_Contracts_View AS
+SELECT 
+    ccm.customer_id,
+    c.contract_id,
+    c.service_address,
+    c.notification_email,
+    c.notification_phone,
+    c.start_date,
+    c.end_date,
+    c.created_at,
+    c.updated_at,
+    st.service_tier_id,
+    st.name as service_tier_name,
+    st.description as service_tier_description,
+    cst.start_date as tier_start_date,
+    cst.end_date as tier_end_date
+FROM Contract c
+JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+LEFT JOIN Contract_Service_Tier cst ON c.contract_id = cst.contract_id
+    AND cst.start_date <= CURDATE()
+    AND cst.end_date >= CURDATE()
+LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
+WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE();
+
+-- Customer's equipment overview (NVRs, Controllers, Cameras)
+CREATE VIEW Customer_Equipment_View AS
+SELECT 
+    ccm.customer_id,
+    c.contract_id,
+    c.service_address,
+    -- NVR Information
+    n.nvr_id,
+    n.model as nvr_model,
+    n.serial_number as nvr_serial,
+    n.firmware_version as nvr_firmware,
+    n.storage_capacity_gb,
+    -- Controller Information
+    ctrl.controller_id,
+    ctrl.type as controller_type,
+    ctrl.model as controller_model,
+    ctrl.serial_number as controller_serial,
+    ctrl.firmware_version as controller_firmware,
+    ctrl.os_architecture,
+    ctrl.hw_encryption_enabled,
+    ctrl.sw_encryption_enabled,
+    -- Camera Information
+    cam.camera_id,
+    cam.name as camera_name,
+    cam.model as camera_model,
+    cam.serial_number as camera_serial,
+    cam.resolution,
+    cam.status as camera_status,
+    cam.talk_back_support,
+    cam.night_vision_support,
+    ccs.priority as camera_priority,
+    ncm_map.channel_number
+FROM Contract c
+JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+JOIN Contract_NVR_Mapping cnm ON c.contract_id = cnm.contract_id
+JOIN NVR n ON cnm.nvr_id = n.nvr_id
+JOIN NVR_Controller_Mapping ncm ON n.nvr_id = ncm.nvr_id
+JOIN Controller ctrl ON ncm.controller_id = ctrl.controller_id
+JOIN Controller_Camera_Support ccs ON ctrl.controller_id = ccs.controller_id
+JOIN Camera cam ON ccs.camera_id = cam.camera_id
+LEFT JOIN NVR_Camera_Mapping ncm_map ON n.nvr_id = ncm_map.nvr_id AND cam.camera_id = ncm_map.camera_id
+WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE();
+
+-- Customer's RF Monitoring configuration
+CREATE VIEW Customer_RF_Monitoring_View AS
+SELECT 
+    ccm.customer_id,
+    c.contract_id,
+    c.service_address,
+    crm.contract_rf_id,
+    crm.enabled as monitoring_enabled,
+    fp.frequency_id,
+    fp.frequency_mhz,
+    fp.frequency_name,
+    fp.description as frequency_description,
+    fp.category,
+    fp.typical_usage,
+    fp.security_importance,
+    fp.jamming_risk,
+    COALESCE(crm.custom_threshold_dbm, fp.default_threshold_dbm) as threshold_dbm,
+    COALESCE(crm.alert_level, CASE 
+        WHEN fp.security_importance = 'critical' THEN 'critical'
+        WHEN fp.security_importance = 'high' THEN 'warning'
+        ELSE 'info'
+    END) as alert_level,
+    crm.scan_interval_seconds,
+    crm.alert_cooldown_minutes,
+    crm.customer_notes
+FROM Contract c
+JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+JOIN Contract_RF_Monitoring crm ON c.contract_id = crm.contract_id
+JOIN RF_Frequency_Profile fp ON crm.frequency_id = fp.frequency_id
+WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE()
+    AND fp.active = TRUE
+ORDER BY fp.security_importance DESC, fp.frequency_mhz;
+
+-- Customer dashboard summary view
+CREATE VIEW Customer_Dashboard_View AS
+SELECT 
+    c.customer_id,
+    c.name_on_contract,
+    c.email,
+    c.phone_number,
+    COUNT(DISTINCT contracts.contract_id) as total_contracts,
+    COUNT(DISTINCT contracts.contract_id) as active_contracts, -- All are active due to date filter
+    COUNT(DISTINCT equipment.nvr_id) as total_nvrs,
+    COUNT(DISTINCT equipment.controller_id) as total_controllers,
+    COUNT(DISTINCT equipment.camera_id) as total_cameras,
+    COUNT(DISTINCT CASE WHEN equipment.camera_status = 'online' THEN equipment.camera_id END) as online_cameras,
+    COUNT(DISTINCT rf_monitoring.frequency_id) as monitored_frequencies,
+    COUNT(DISTINCT CASE WHEN rf_monitoring.monitoring_enabled = TRUE THEN rf_monitoring.frequency_id END) as active_rf_monitors
+FROM Customer c
+LEFT JOIN Customer_Contracts_View contracts ON c.customer_id = contracts.customer_id
+LEFT JOIN Customer_Equipment_View equipment ON c.customer_id = equipment.customer_id
+LEFT JOIN Customer_RF_Monitoring_View rf_monitoring ON c.customer_id = rf_monitoring.customer_id
+WHERE c.active = TRUE
+GROUP BY c.customer_id, c.name_on_contract, c.email, c.phone_number;
+
+-- =========================================
+-- STORED PROCEDURES FOR CUSTOMER AUTH
+-- =========================================
+
+DELIMITER //
+
+-- Clean expired customer sessions
+CREATE PROCEDURE CleanExpiredCustomerSessions()
+BEGIN
+    DELETE FROM Customer_Session WHERE expires_at < NOW();
+END //
+
+DELIMITER ;
+
+-- =========================================
+-- CLEANUP EVENTS
+-- =========================================
+
+-- Create scheduled event for customer session cleanup
+CREATE EVENT IF NOT EXISTS CleanExpiredCustomerSessionsEvent
+ON SCHEDULE EVERY 1 DAY
+STARTS CURRENT_TIMESTAMP
+DO CALL CleanExpiredCustomerSessions();
