@@ -637,33 +637,44 @@ CREATE TABLE Controller_Camera_Support (
 -- =========================================
 -- SECURITY AND ACCESS MANAGEMENT
 -- =========================================
+-- This section manages SSH keys and X.509 certificates for secure controller access,
+-- remote administration, and encrypted communications between system components.
 
 -- SSH Public Key Management Table
+-- PURPOSE: Centralized storage of SSH public keys for secure remote access to edge controllers
+-- USAGE: Enables secure shell access for maintenance, debugging, configuration, and emergency response
+-- SECURITY: Only public keys stored (private keys remain with administrators), supports key rotation
+-- ACCESS CONTROL: Granular permissions - different administrators can access different controller sets
+-- COMPLIANCE: Supports audit requirements for privileged access management
 CREATE TABLE SSH_Key (
     ssh_key_id INT AUTO_INCREMENT PRIMARY KEY 
-        COMMENT 'Unique identifier for the SSH public key',
+        COMMENT 'Unique SSH key identifier - used for access control management and audit trails',
     key_type VARCHAR(50) NOT NULL 
-        COMMENT 'SSH key algorithm type (e.g., "RSA", "ED25519", "ECDSA")',
+        COMMENT 'SSH key algorithm type (e.g., "RSA", "ED25519", "ECDSA") - affects security strength and compatibility',
     public_key TEXT NOT NULL 
-        COMMENT 'SSH public key in OpenSSH format (ssh-rsa AAAAB3... or ssh-ed25519 AAAAC3...)',
+        COMMENT 'SSH public key in OpenSSH format (ssh-rsa AAAAB3... or ssh-ed25519 AAAAC3...) - used for authentication',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the SSH key was added to the system',
+        COMMENT 'Key creation timestamp - tracks when SSH key was added for access control',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the SSH key record was last modified'
+        COMMENT 'Last key update timestamp - records key rotations and modifications',
 );
 
 -- Controller SSH Access Control Table
+-- PURPOSE: Granular SSH access control mapping specific keys to specific controllers
+-- USAGE: Implements principle of least privilege - different administrators access different controller sets
+-- SECURITY: Role-based access control for maintenance, emergency response, and system administration
+-- AUDIT: Tracks which administrators have access to which controllers for compliance
 CREATE TABLE Controller_SSH_Key_Mapping (
     controller_ssh_key_id INT AUTO_INCREMENT PRIMARY KEY 
-        COMMENT 'Unique identifier for the SSH key authorization mapping',
+        COMMENT 'Unique identifier for SSH key authorization mapping - supports access control audit trails',
     controller_id INT NOT NULL 
-        COMMENT 'Reference to the controller that can be accessed',
+        COMMENT 'Reference to controller device - grants SSH access to specific edge device',
     ssh_key_id INT NOT NULL 
-        COMMENT 'Reference to the SSH key authorized for access to this controller',
+        COMMENT 'Reference to SSH key - authorizes specific key for controller access',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when SSH access was granted',
+        COMMENT 'Access grant timestamp - tracks when SSH access was authorized for audit and security',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the access mapping was last modified',
+        COMMENT 'Last access update timestamp - records permission changes and key rotations',
 
     FOREIGN KEY (controller_id) REFERENCES Controller(controller_id) ON DELETE CASCADE 
         COMMENT 'Revoke SSH access when controller is decommissioned',
@@ -675,42 +686,50 @@ CREATE TABLE Controller_SSH_Key_Mapping (
 );
 
 -- X.509 Certificate Management Table
+-- PURPOSE: Centralized management of X.509 certificates for TLS/SSL communications and authentication
+-- USAGE: Secure HTTPS communications, mutual TLS authentication, and encrypted service connections
+-- LIFECYCLE: Proactive certificate renewal management with expiration monitoring and alerts
+-- COMPLIANCE: Supports PKI requirements and certificate authority management
 CREATE TABLE X509_Certificate (
     certificate_id INT AUTO_INCREMENT PRIMARY KEY 
-        COMMENT 'Unique identifier for the X.509 certificate',
+        COMMENT 'Unique certificate identifier - used for certificate lifecycle management and assignment tracking',
     common_name VARCHAR(255) NOT NULL 
-        COMMENT 'Certificate common name (CN) - usually hostname, service name, or controller identity',
+        COMMENT 'Certificate common name (CN) - typically hostname, service name, or controller FQDN for identification',
     issuer VARCHAR(255) NOT NULL 
-        COMMENT 'Certificate issuer/Certificate Authority name (e.g., "Let\'s Encrypt", "Internal CA", "DigiCert")',
+        COMMENT 'Certificate issuer/CA name (e.g., "Let\'s Encrypt", "Internal CA", "DigiCert") - tracks certificate authority',
     valid_from DATE NOT NULL 
-        COMMENT 'Certificate validity start date (not valid before this date)',
+        COMMENT 'Certificate validity start date - certificate not valid before this date',
     valid_to DATE NOT NULL 
-        COMMENT 'Certificate expiration date (used for renewal alerts and monitoring)',
+        COMMENT 'Certificate expiration date - critical for renewal alerts and automated certificate management',
     certificate_data TEXT NOT NULL 
-        COMMENT 'PEM-encoded certificate data (-----BEGIN CERTIFICATE-----)',
+        COMMENT 'PEM-encoded certificate data (-----BEGIN CERTIFICATE-----) - actual certificate content',
     private_key_ref VARCHAR(255) NOT NULL 
-        COMMENT 'Reference to private key stored in external secure secret manager',
+        COMMENT 'Reference to private key in external secret manager - never store private keys in database',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the certificate was added to the system',
+        COMMENT 'Certificate registration timestamp - tracks when certificate was added to system',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the certificate record was last modified',
+        COMMENT 'Last certificate update timestamp - records renewals and modifications',
 
     INDEX idx_valid_to (valid_to) 
         COMMENT 'Efficient monitoring of certificate expiration dates for renewal alerts'
 );
 
 -- Controller Certificate Assignment Table
+-- PURPOSE: Maps X.509 certificates to specific controllers for secure communications
+-- USAGE: Enables TLS/SSL for controller API communications and mutual authentication
+-- FLEXIBILITY: One controller can have multiple certificates for different purposes or renewal overlap
+-- SECURITY: Supports certificate rotation and emergency certificate deployment
 CREATE TABLE Controller_Certificate_Mapping (
     controller_certificate_id INT AUTO_INCREMENT PRIMARY KEY 
-        COMMENT 'Unique identifier for the certificate assignment',
+        COMMENT 'Unique identifier for certificate assignment - supports certificate lifecycle management',
     controller_id INT NOT NULL 
-        COMMENT 'Reference to the controller using this certificate',
+        COMMENT 'Reference to controller using the certificate - enables secure communications',
     certificate_id INT NOT NULL 
-        COMMENT 'Reference to the X.509 certificate assigned to this controller',
+        COMMENT 'Reference to X.509 certificate - assigns specific certificate to controller',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the certificate was assigned to the controller',
+        COMMENT 'Certificate assignment timestamp - tracks when certificate was deployed to controller',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP 
-        COMMENT 'Timestamp when the assignment was last modified',
+        COMMENT 'Last assignment update timestamp - records certificate rotations and updates',
 
     FOREIGN KEY (controller_id) REFERENCES Controller(controller_id) ON DELETE CASCADE 
         COMMENT 'Remove certificate assignments when controller is decommissioned',
