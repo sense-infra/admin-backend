@@ -1465,3 +1465,499 @@ func (s *AuthService) ReassignUsersToRole(fromRoleID, toRoleID int) error {
 	log.Printf("Successfully reassigned %d users from role %d to role %d", rowsAffected, fromRoleID, toRoleID)
 	return nil
 }
+
+// GetCustomerByID returns a customer by ID (exported version for handlers)
+func (a *AuthService) GetCustomerByID(customerID int) (*models.Customer, error) {
+	return a.getCustomerByID(customerID)
+}
+
+var (
+	ErrCustomerInvalidCredentials = errors.New("invalid email or password")
+	ErrCustomerLocked             = errors.New("customer account is locked")
+	ErrCustomerInactive           = errors.New("customer account is inactive")
+	ErrCustomerNotFound           = errors.New("customer not found")
+)
+
+type CustomerJWTClaims struct {
+	CustomerID  int      `json:"customer_id"`
+	Email       string   `json:"email"`
+	Name        string   `json:"name"`
+	SessionID   string   `json:"session_id"`
+	ContractIDs []int    `json:"contract_ids"`
+	jwt.RegisteredClaims
+}
+
+// Customer Authentication Methods (add to AuthService)
+
+// AuthenticateCustomer validates customer credentials and returns a JWT token
+func (a *AuthService) AuthenticateCustomer(email, password string, ipAddress, userAgent string) (*models.CustomerLoginResponse, error) {
+	// Get customer by email
+	customer, err := a.getCustomerByEmail(email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrCustomerInvalidCredentials
+		}
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	// Check if customer is active
+	if !customer.Active {
+		return nil, ErrCustomerInactive
+	}
+
+	// Check if customer is locked
+	if customer.IsLocked() {
+		return nil, ErrCustomerLocked
+	}
+
+	// Verify password
+	if err := bcrypt.CompareHashAndPassword([]byte(customer.PasswordHash), []byte(password)); err != nil {
+		// Increment failed login attempts
+		a.incrementCustomerFailedLoginAttempts(customer.CustomerID)
+		return nil, ErrCustomerInvalidCredentials
+	}
+
+	// Reset failed login attempts on successful login
+	if err := a.resetCustomerFailedLoginAttempts(customer.CustomerID); err != nil {
+		return nil, fmt.Errorf("failed to reset failed login attempts: %w", err)
+	}
+
+	// Check if password change is required
+	if customer.ShouldForcePasswordChange() {
+		return &models.CustomerLoginResponse{
+			Customer:            *customer,
+			ForcePasswordChange: true,
+		}, nil
+	}
+
+	// Get customer's contract IDs for JWT claims
+	contractIDs, err := a.getCustomerContractIDs(customer.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer contracts: %w", err)
+	}
+
+	// Create session and JWT token
+	sessionID := a.generateSessionID()
+	expiresAt := time.Now().Add(24 * time.Hour) // 24 hour sessions
+
+	token, err := a.generateCustomerJWT(customer.CustomerID, customer.Email, customer.NameOnContract, sessionID, contractIDs, expiresAt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate JWT: %w", err)
+	}
+
+	// Store session in database
+	tokenHash := a.hashToken(token)
+	if err := a.createCustomerSession(sessionID, customer.CustomerID, tokenHash, ipAddress, userAgent, expiresAt); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Update last login time
+	if err := a.updateCustomerLastLogin(customer.CustomerID); err != nil {
+		return nil, fmt.Errorf("failed to update last login: %w", err)
+	}
+
+	return &models.CustomerLoginResponse{
+		Token:               token,
+		ExpiresAt:           expiresAt,
+		Customer:            *customer,
+		ForcePasswordChange: false,
+	}, nil
+}
+
+// ValidateCustomerToken validates a customer JWT token and returns the auth context
+func (a *AuthService) ValidateCustomerToken(tokenString string) (*models.CustomerAuthContext, error) {
+	// Parse and validate JWT
+	token, err := jwt.ParseWithClaims(tokenString, &CustomerJWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return a.jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, ErrInvalidToken
+	}
+
+	claims, ok := token.Claims.(*CustomerJWTClaims)
+	if !ok || !token.Valid {
+		return nil, ErrInvalidToken
+	}
+
+	// Check if session exists and is valid
+	session, err := a.getCustomerSession(claims.SessionID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrSessionExpired
+		}
+		return nil, fmt.Errorf("failed to get session: %w", err)
+	}
+
+	if session.IsExpired() {
+		return nil, ErrSessionExpired
+	}
+
+	// Verify token hash matches
+	tokenHash := a.hashToken(tokenString)
+	if session.TokenHash != tokenHash {
+		return nil, ErrInvalidToken
+	}
+
+	// Get customer to verify they're still active
+	customer, err := a.getCustomerByID(claims.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	if !customer.Active || customer.IsLocked() {
+		return nil, ErrCustomerInactive
+	}
+
+	// Update session activity
+	if err := a.updateCustomerSessionActivity(claims.SessionID); err != nil {
+		return nil, fmt.Errorf("failed to update session activity: %w", err)
+	}
+
+	return &models.CustomerAuthContext{
+		CustomerID:  &customer.CustomerID,
+		Email:       customer.Email,
+		Name:        &customer.NameOnContract,
+		SessionID:   &claims.SessionID,
+		ContractIDs: claims.ContractIDs,
+	}, nil
+}
+
+// ChangeCustomerPassword changes a customer's password
+func (a *AuthService) ChangeCustomerPassword(customerID int, currentPassword, newPassword string) error {
+	// Get customer
+	customer, err := a.getCustomerByID(customerID)
+	if err != nil {
+		return fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	// Verify current password
+	if err := bcrypt.CompareHashAndPassword([]byte(customer.PasswordHash), []byte(currentPassword)); err != nil {
+		return ErrCustomerInvalidCredentials
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Update password in database
+	query := `UPDATE Customer
+		SET password_hash = ?, password_changed_at = NOW(), force_password_change = FALSE
+		WHERE customer_id = ?`
+
+	if _, err := a.db.Exec(query, string(hashedPassword), customerID); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	// Invalidate all sessions for this customer
+	if err := a.invalidateCustomerSessions(customerID); err != nil {
+		return fmt.Errorf("failed to invalidate customer sessions: %w", err)
+	}
+
+	return nil
+}
+
+// CustomerLogout invalidates a customer session
+func (a *AuthService) CustomerLogout(sessionID string) error {
+	query := `DELETE FROM Customer_Session WHERE session_id = ?`
+	if _, err := a.db.Exec(query, sessionID); err != nil {
+		return fmt.Errorf("failed to delete customer session: %w", err)
+	}
+	return nil
+}
+
+// GetCustomerDashboard returns dashboard data for a customer
+func (a *AuthService) GetCustomerDashboard(customerID int) (*models.CustomerDashboard, error) {
+	// Get customer basic info
+	customer, err := a.getCustomerByID(customerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	// Get dashboard summary from view
+	var summary struct {
+		TotalContracts       int `db:"total_contracts"`
+		ActiveContracts      int `db:"active_contracts"`
+		TotalNVRs           int `db:"total_nvrs"`
+		TotalControllers    int `db:"total_controllers"`
+		TotalCameras        int `db:"total_cameras"`
+		OnlineCameras       int `db:"online_cameras"`
+		MonitoredFrequencies int `db:"monitored_frequencies"`
+		ActiveRFMonitors    int `db:"active_rf_monitors"`
+	}
+
+	summaryQuery := `SELECT total_contracts, active_contracts, total_nvrs, total_controllers,
+		total_cameras, online_cameras, monitored_frequencies, active_rf_monitors
+		FROM Customer_Dashboard_View WHERE customer_id = ?`
+
+	err = a.db.Get(&summary, summaryQuery, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dashboard summary: %w", err)
+	}
+
+	// Get detailed contract information
+	contracts, err := a.getCustomerContracts(customerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer contracts: %w", err)
+	}
+
+	return &models.CustomerDashboard{
+		Customer:             *customer,
+		TotalContracts:       summary.TotalContracts,
+		ActiveContracts:      summary.ActiveContracts,
+		TotalNVRs:           summary.TotalNVRs,
+		TotalControllers:    summary.TotalControllers,
+		TotalCameras:        summary.TotalCameras,
+		OnlineCameras:       summary.OnlineCameras,
+		MonitoredFrequencies: summary.MonitoredFrequencies,
+		ActiveRFMonitors:    summary.ActiveRFMonitors,
+		Contracts:           contracts,
+	}, nil
+}
+
+// GetCustomerContracts returns contracts for a customer
+func (a *AuthService) GetCustomerContracts(customerID int) ([]models.CustomerContractDetail, error) {
+	return a.getCustomerContracts(customerID)
+}
+
+// GetCustomerContract returns a specific contract for a customer
+func (a *AuthService) GetCustomerContract(customerID, contractID int) (*models.CustomerContractDetail, error) {
+	// First verify customer has access to this contract
+	if !a.customerHasAccessToContract(customerID, contractID) {
+		return nil, fmt.Errorf("customer does not have access to contract")
+	}
+
+	contracts, err := a.getCustomerContracts(customerID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, contract := range contracts {
+		if contract.ContractID == contractID {
+			return &contract, nil
+		}
+	}
+
+	return nil, fmt.Errorf("contract not found")
+}
+
+// GetCustomerContractServiceTier returns service tier for a customer's contract
+func (a *AuthService) GetCustomerContractServiceTier(customerID, contractID int) (*models.ServiceTierBasic, error) {
+	// Verify customer has access to this contract
+	if !a.customerHasAccessToContract(customerID, contractID) {
+		return nil, fmt.Errorf("customer does not have access to contract")
+	}
+
+	query := `SELECT st.service_tier_id, st.name, st.description
+		FROM Customer_Contracts_View ccv
+		JOIN Service_Tier st ON ccv.service_tier_id = st.service_tier_id
+		WHERE ccv.customer_id = ? AND ccv.contract_id = ?`
+
+	var serviceTier models.ServiceTierBasic
+	err := a.db.Get(&serviceTier, query, customerID, contractID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("service tier not found for contract")
+		}
+		return nil, fmt.Errorf("failed to get service tier: %w", err)
+	}
+
+	return &serviceTier, nil
+}
+
+// Admin methods for customer management
+
+// AdminResetCustomerPassword resets a customer's password
+func (a *AuthService) AdminResetCustomerPassword(adminUserID, customerID int, newPassword string) error {
+	// Verify customer exists
+	_, err := a.getCustomerByID(customerID)
+	if err != nil {
+		return fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Update password in database
+	query := `UPDATE Customer
+		SET password_hash = ?, password_changed_at = NOW(), force_password_change = TRUE
+		WHERE customer_id = ?`
+
+	if _, err := a.db.Exec(query, string(hashedPassword), customerID); err != nil {
+		return fmt.Errorf("failed to update customer password: %w", err)
+	}
+
+	// Invalidate all sessions for the customer (force re-login with new password)
+	if err := a.invalidateCustomerSessions(customerID); err != nil {
+		return fmt.Errorf("failed to invalidate customer sessions: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateRandomPasswordForCustomer generates a random password for customer (admin only)
+func (a *AuthService) GenerateRandomPasswordForCustomer(adminUserID, customerID int) (string, error) {
+	// Verify admin has permission
+	adminUser, err := a.getUserByID(adminUserID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get admin user: %w", err)
+	}
+
+	if !adminUser.Role.Permissions.HasPermission("customers", "update") {
+		return "", fmt.Errorf("insufficient permissions to reset customer password")
+	}
+
+	// Generate new password
+	newPassword := a.generateRandomPassword()
+
+	// Use AdminResetCustomerPassword to set the new password
+	if err := a.AdminResetCustomerPassword(adminUserID, customerID, newPassword); err != nil {
+		return "", err
+	}
+
+	return newPassword, nil
+}
+
+// Helper methods for customer authentication
+
+func (a *AuthService) getCustomerByEmail(email string) (*models.Customer, error) {
+	query := `SELECT * FROM Customer WHERE email = ? AND active = TRUE`
+	var customer models.Customer
+	err := a.db.Get(&customer, query, email)
+	return &customer, err
+}
+
+func (a *AuthService) getCustomerByID(customerID int) (*models.Customer, error) {
+	query := `SELECT * FROM Customer WHERE customer_id = ?`
+	var customer models.Customer
+	err := a.db.Get(&customer, query, customerID)
+	return &customer, err
+}
+
+func (a *AuthService) getCustomerContractIDs(customerID int) ([]int, error) {
+	query := `SELECT DISTINCT contract_id FROM Customer_Contracts_View WHERE customer_id = ?`
+	var contractIDs []int
+	err := a.db.Select(&contractIDs, query, customerID)
+	return contractIDs, err
+}
+
+func (a *AuthService) getCustomerContracts(customerID int) ([]models.CustomerContractDetail, error) {
+	// Get contracts with basic info
+	contractQuery := `SELECT * FROM Customer_Contracts_View WHERE customer_id = ? ORDER BY start_date DESC`
+	var contracts []models.CustomerContractDetail
+	err := a.db.Select(&contracts, contractQuery, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get contracts: %w", err)
+	}
+
+	// For each contract, get equipment and RF monitoring
+	for i := range contracts {
+		// Get equipment
+		equipmentQuery := `SELECT * FROM Customer_Equipment_View WHERE customer_id = ? AND contract_id = ?`
+		err = a.db.Select(&contracts[i].Equipment, equipmentQuery, customerID, contracts[i].ContractID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get equipment for contract %d: %w", contracts[i].ContractID, err)
+		}
+
+		// Get RF monitoring
+		rfQuery := `SELECT * FROM Customer_RF_Monitoring_View WHERE customer_id = ? AND contract_id = ? ORDER BY security_importance DESC, frequency_mhz`
+		err = a.db.Select(&contracts[i].RFMonitoring, rfQuery, customerID, contracts[i].ContractID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get RF monitoring for contract %d: %w", contracts[i].ContractID, err)
+		}
+	}
+
+	return contracts, nil
+}
+
+func (a *AuthService) customerHasAccessToContract(customerID, contractID int) bool {
+	var count int
+	query := `SELECT COUNT(*) FROM Customer_Contracts_View WHERE customer_id = ? AND contract_id = ?`
+	err := a.db.Get(&count, query, customerID, contractID)
+	return err == nil && count > 0
+}
+
+func (a *AuthService) getCustomerSession(sessionID string) (*models.CustomerSession, error) {
+	query := `SELECT * FROM Customer_Session WHERE session_id = ?`
+	var session models.CustomerSession
+	err := a.db.Get(&session, query, sessionID)
+	return &session, err
+}
+
+func (a *AuthService) createCustomerSession(sessionID string, customerID int, tokenHash, ipAddress, userAgent string, expiresAt time.Time) error {
+	query := `INSERT INTO Customer_Session
+		(session_id, customer_id, token_hash, ip_address, user_agent, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?)`
+
+	_, err := a.db.Exec(query, sessionID, customerID, tokenHash, ipAddress, userAgent, expiresAt)
+	return err
+}
+
+func (a *AuthService) updateCustomerSessionActivity(sessionID string) error {
+	query := `UPDATE Customer_Session SET last_activity = NOW() WHERE session_id = ?`
+	_, err := a.db.Exec(query, sessionID)
+	return err
+}
+
+func (a *AuthService) updateCustomerLastLogin(customerID int) error {
+	query := `UPDATE Customer SET last_login = NOW() WHERE customer_id = ?`
+	_, err := a.db.Exec(query, customerID)
+	return err
+}
+
+func (a *AuthService) incrementCustomerFailedLoginAttempts(customerID int) error {
+	query := `UPDATE Customer
+		SET failed_login_attempts = failed_login_attempts + 1,
+		    locked_until = CASE
+		        WHEN failed_login_attempts >= 4 THEN DATE_ADD(NOW(), INTERVAL 30 MINUTE)
+		        ELSE locked_until
+		    END
+		WHERE customer_id = ?`
+	_, err := a.db.Exec(query, customerID)
+	return err
+}
+
+func (a *AuthService) resetCustomerFailedLoginAttempts(customerID int) error {
+	query := `UPDATE Customer
+		SET failed_login_attempts = 0, locked_until = NULL
+		WHERE customer_id = ?`
+	_, err := a.db.Exec(query, customerID)
+	return err
+}
+
+func (a *AuthService) invalidateCustomerSessions(customerID int) error {
+	query := `DELETE FROM Customer_Session WHERE customer_id = ?`
+	_, err := a.db.Exec(query, customerID)
+	return err
+}
+
+func (a *AuthService) generateCustomerJWT(customerID int, email *string, name string, sessionID string, contractIDs []int, expiresAt time.Time) (string, error) {
+	emailStr := ""
+	if email != nil {
+		emailStr = *email
+	}
+
+	claims := &CustomerJWTClaims{
+		CustomerID:  customerID,
+		Email:       emailStr,
+		Name:        name,
+		SessionID:   sessionID,
+		ContractIDs: contractIDs,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        sessionID,
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(a.jwtSecret)
+}

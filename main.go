@@ -171,7 +171,7 @@ func main() {
 	apiKeyDeactivateRoutes.Use(authMiddleware.RequirePermission("api_keys", "update"))
 	apiKeyDeactivateRoutes.HandleFunc("/{id:[0-9]+}/deactivate", authHandler.DeactivateAPIKey).Methods("POST")
 
-	// Customer routes - with proper rate limiting for API keys
+	// Customer read routes (updated to include auth fields)
 	customerRoutes := r.PathPrefix("/customers").Subrouter()
 	customerRoutes.Use(middleware.RateLimit(100, time.Hour))
 	customerRoutes.Use(authMiddleware.RequirePermission("customers", "read"))
@@ -180,21 +180,33 @@ func main() {
 	customerRoutes.HandleFunc("/{id:[0-9]+}", customerHandler.GetCustomer).Methods("GET")
 	customerRoutes.HandleFunc("/{id:[0-9]+}/contracts", customerHandler.GetCustomerWithContracts).Methods("GET")
 
-	// Customer create routes
+	// NEW: Customer authentication info route (admin only)
+	customerRoutes.HandleFunc("/{id:[0-9]+}/auth", customerHandler.GetCustomerAuth).Methods("GET")
+
+	// Customer create routes (updated with auth fields)
 	customerCreateRoutes := r.PathPrefix("/customers").Subrouter()
 	customerCreateRoutes.Use(middleware.RateLimit(10, time.Hour))
 	customerCreateRoutes.Use(authMiddleware.RequirePermission("customers", "create"))
 	customerCreateRoutes.Use(authMiddleware.LogAPIUsage)
 	customerCreateRoutes.HandleFunc("", customerHandler.CreateCustomer).Methods("POST")
 
-	// Customer update routes
+	// Customer update routes (updated with auth fields)
 	customerUpdateRoutes := r.PathPrefix("/customers").Subrouter()
 	customerUpdateRoutes.Use(middleware.RateLimit(50, time.Hour))
 	customerUpdateRoutes.Use(authMiddleware.RequirePermission("customers", "update"))
 	customerUpdateRoutes.Use(authMiddleware.LogAPIUsage)
 	customerUpdateRoutes.HandleFunc("/{id:[0-9]+}", customerHandler.UpdateCustomer).Methods("PUT")
 
-	// Customer delete routes
+	// NEW: Customer password management routes (admin only)
+	customerPasswordRoutes := r.PathPrefix("/customers").Subrouter()
+	customerPasswordRoutes.Use(middleware.RateLimit(20, time.Hour))
+	customerPasswordRoutes.Use(authMiddleware.RequirePermission("customers", "update"))
+	customerPasswordRoutes.Use(authMiddleware.LogAPIUsage)
+	customerPasswordRoutes.HandleFunc("/{id:[0-9]+}/reset-password", customerHandler.AdminResetCustomerPassword).Methods("POST")
+	customerPasswordRoutes.HandleFunc("/{id:[0-9]+}/generate-password", customerHandler.AdminGenerateCustomerPassword).Methods("POST")
+	customerPasswordRoutes.HandleFunc("/{id:[0-9]+}/unlock", customerHandler.UnlockCustomer).Methods("POST")
+
+	// Customer delete routes (unchanged)
 	customerDeleteRoutes := r.PathPrefix("/customers").Subrouter()
 	customerDeleteRoutes.Use(middleware.RateLimit(5, time.Hour))
 	customerDeleteRoutes.Use(authMiddleware.RequirePermission("customers", "delete"))
@@ -280,6 +292,46 @@ func main() {
 	rateLimitAdminRoutes.Use(authMiddleware.RequireRole("admin"))
 	rateLimitAdminRoutes.HandleFunc("/{id:[0-9]+}/reset", rateLimitHandler.ResetAPIKeyRateLimit).Methods("POST")
 
+	// Initialize customer auth handler
+	customerAuthHandler := handlers.NewCustomerAuthHandler(authService)
+
+	// =========================================
+	// CUSTOMER AUTHENTICATION & PORTAL ROUTES
+	// =========================================
+
+	// Public customer routes (no authentication required)
+	r.HandleFunc("/client/auth/login", customerAuthHandler.CustomerLogin).Methods("POST")
+
+	// Protected customer routes (customer authentication required)
+	clientAuthRoutes := r.PathPrefix("/client").Subrouter()
+	clientAuthRoutes.Use(authMiddleware.RequireCustomerAuth)
+
+	// Customer profile and authentication
+	clientAuthRoutes.HandleFunc("/auth/logout", customerAuthHandler.CustomerLogout).Methods("POST")
+	clientAuthRoutes.HandleFunc("/auth/change-password", customerAuthHandler.ChangeCustomerPassword).Methods("POST")
+	clientAuthRoutes.HandleFunc("/profile", customerAuthHandler.GetCustomerProfile).Methods("GET")
+
+	// Customer dashboard and overview
+	clientAuthRoutes.HandleFunc("/dashboard", customerAuthHandler.GetCustomerDashboard).Methods("GET")
+
+	// Customer contracts (all contracts accessible to customer)
+	clientAuthRoutes.HandleFunc("/contracts", customerAuthHandler.GetCustomerContracts).Methods("GET")
+
+	// Specific contract routes (with contract access validation)
+	clientContractRoutes := r.PathPrefix("/client/contracts").Subrouter()
+	clientContractRoutes.Use(authMiddleware.RequireCustomerAuth)
+	clientContractRoutes.Use(authMiddleware.RequireContractAccess)
+	clientContractRoutes.HandleFunc("/{id:[0-9]+}", customerAuthHandler.GetCustomerContract).Methods("GET")
+	clientContractRoutes.HandleFunc("/{id:[0-9]+}/service-tier", customerAuthHandler.GetCustomerContractServiceTier).Methods("GET")
+
+	// Future extensibility routes (commented out for now)
+	// clientContractRoutes.HandleFunc("/{id:[0-9]+}/equipment", customerAuthHandler.GetCustomerContractEquipment).Methods("GET")
+	// clientContractRoutes.HandleFunc("/{id:[0-9]+}/cameras", customerAuthHandler.GetCustomerContractCameras).Methods("GET")
+	// clientContractRoutes.HandleFunc("/{id:[0-9]+}/controllers", customerAuthHandler.GetCustomerContractControllers).Methods("GET")
+	// clientContractRoutes.HandleFunc("/{id:[0-9]+}/rf-monitoring", customerAuthHandler.GetCustomerContractRFMonitoring).Methods("GET")
+	// clientContractRoutes.HandleFunc("/{id:[0-9]+}/events", customerAuthHandler.GetCustomerContractEvents).Methods("GET")
+
+
 	// Start server
 	port := cfg.Server.Port
 	if port == "" {
@@ -295,15 +347,21 @@ func main() {
 	log.Printf("📡 API Base URL: http://localhost:%s", port)
 	log.Printf("🔐 Default admin credentials: admin / SenseGuard2025!")
 	log.Printf("👀 Default viewer credentials: viewer / Viewer2025!")
+	log.Printf("👤 Customer portal: /client/* endpoints")
+	log.Printf("🔑 Customer auth: Email + Password login")
+	log.Printf("📋 Customer features: Dashboard, Contracts, Service Tiers, Equipment View")
 	log.Printf("⚡ Rate limiting: ENABLED")
 	log.Printf("🛡️  CORS: ENABLED")
 	log.Printf("📊 API usage logging: ENABLED")
 	log.Printf("💾 Database: Connected")
-	log.Printf("🔑 JWT Auth: Enabled")
+	log.Printf("🔑 JWT Auth: Enabled (Admin + Customer)")
 	log.Printf("📋 Service Tiers: Enabled")
 	log.Printf("🤝 Contract-Customer Mapping: Enabled")
+	log.Printf("📻 RF Monitoring: Customer-viewable")
 	log.Println("────────────────────────────────────────")
 	log.Println("✅ API Server ready to accept connections")
+	log.Println("🌐 Admin Portal: Full system management")
+	log.Println("👥 Customer Portal: Contract & equipment view")
 
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatalf("❌ Server failed to start: %v", err)

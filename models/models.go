@@ -108,8 +108,162 @@ type Customer struct {
 	UniqueID       string    `json:"unique_id" db:"unique_id"`
 	Email          *string   `json:"email,omitempty" db:"email"`
 	PhoneNumber    *string   `json:"phone_number,omitempty" db:"phone_number"`
+	PasswordHash         string     `json:"-" db:"password_hash"` // Never include in JSON
+	ForcePasswordChange  bool       `json:"force_password_change" db:"force_password_change"`
+	LastLogin            *time.Time `json:"last_login" db:"last_login"`
+	FailedLoginAttempts  int        `json:"failed_login_attempts" db:"failed_login_attempts"`
+	LockedUntil          *time.Time `json:"locked_until" db:"locked_until"`
+	PasswordChangedAt    time.Time  `json:"password_changed_at" db:"password_changed_at"`
+	Active               bool       `json:"active" db:"active"`
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// Customer helper methods
+func (c *Customer) IsLocked() bool {
+	return c.LockedUntil != nil && c.LockedUntil.After(time.Now())
+}
+
+func (c *Customer) ShouldForcePasswordChange() bool {
+	return c.ForcePasswordChange || c.PasswordChangedAt.Before(time.Now().AddDate(0, -6, 0)) // 6 months
+}
+
+// CustomerSession represents an active customer session
+type CustomerSession struct {
+	SessionID    string     `json:"session_id" db:"session_id"`
+	CustomerID   int        `json:"customer_id" db:"customer_id"`
+	TokenHash    string     `json:"-" db:"token_hash"`
+	IPAddress    *string    `json:"ip_address" db:"ip_address"`
+	UserAgent    *string    `json:"user_agent" db:"user_agent"`
+	ExpiresAt    time.Time  `json:"expires_at" db:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
+	LastActivity time.Time  `json:"last_activity" db:"last_activity"`
+
+	// Joined fields
+	Customer *Customer `json:"customer,omitempty"`
+}
+
+func (s *CustomerSession) IsExpired() bool {
+	return s.ExpiresAt.Before(time.Now())
+}
+
+// Customer dashboard and view models
+type CustomerDashboard struct {
+	Customer              Customer                   `json:"customer"`
+	TotalContracts        int                        `json:"total_contracts"`
+	ActiveContracts       int                        `json:"active_contracts"`
+	TotalNVRs            int                        `json:"total_nvrs"`
+	TotalControllers     int                        `json:"total_controllers"`
+	TotalCameras         int                        `json:"total_cameras"`
+	OnlineCameras        int                        `json:"online_cameras"`
+	MonitoredFrequencies int                        `json:"monitored_frequencies"`
+	ActiveRFMonitors     int                        `json:"active_rf_monitors"`
+	Contracts            []CustomerContractDetail   `json:"contracts"`
+}
+
+type CustomerContractDetail struct {
+	ContractID           int                      `json:"contract_id" db:"contract_id"`
+	ServiceAddress       string                   `json:"service_address" db:"service_address"`
+	NotificationEmail    *string                  `json:"notification_email,omitempty" db:"notification_email"`
+	NotificationPhone    *string                  `json:"notification_phone,omitempty" db:"notification_phone"`
+	StartDate            time.Time                `json:"start_date" db:"start_date"`
+	EndDate              time.Time                `json:"end_date" db:"end_date"`
+	ServiceTierID        *int                     `json:"service_tier_id,omitempty" db:"service_tier_id"`
+	ServiceTierName      *string                  `json:"service_tier_name,omitempty" db:"service_tier_name"`
+	ServiceTierDescription *string                `json:"service_tier_description,omitempty" db:"service_tier_description"`
+	TierStartDate        *time.Time               `json:"tier_start_date,omitempty" db:"tier_start_date"`
+	TierEndDate          *time.Time               `json:"tier_end_date,omitempty" db:"tier_end_date"`
+	Equipment            []CustomerEquipmentItem  `json:"equipment"`
+	RFMonitoring         []CustomerRFMonitorItem  `json:"rf_monitoring"`
+}
+
+type CustomerEquipmentItem struct {
+	// NVR
+	NVRID              *int     `json:"nvr_id,omitempty" db:"nvr_id"`
+	NVRModel           *string  `json:"nvr_model,omitempty" db:"nvr_model"`
+	NVRSerial          *string  `json:"nvr_serial,omitempty" db:"nvr_serial"`
+	NVRFirmware        *string  `json:"nvr_firmware,omitempty" db:"nvr_firmware"`
+	StorageCapacityGB  *int     `json:"storage_capacity_gb,omitempty" db:"storage_capacity_gb"`
+	
+	// Controller
+	ControllerID       *int     `json:"controller_id,omitempty" db:"controller_id"`
+	ControllerType     *string  `json:"controller_type,omitempty" db:"controller_type"`
+	ControllerModel    *string  `json:"controller_model,omitempty" db:"controller_model"`
+	ControllerSerial   *string  `json:"controller_serial,omitempty" db:"controller_serial"`
+	ControllerFirmware *string  `json:"controller_firmware,omitempty" db:"controller_firmware"`
+	OSArchitecture     *string  `json:"os_architecture,omitempty" db:"os_architecture"`
+	HWEncryptionEnabled *bool   `json:"hw_encryption_enabled,omitempty" db:"hw_encryption_enabled"`
+	SWEncryptionEnabled *bool   `json:"sw_encryption_enabled,omitempty" db:"sw_encryption_enabled"`
+	
+	// Camera
+	CameraID           *int     `json:"camera_id,omitempty" db:"camera_id"`
+	CameraName         *string  `json:"camera_name,omitempty" db:"camera_name"`
+	CameraModel        *string  `json:"camera_model,omitempty" db:"camera_model"`
+	CameraSerial       *string  `json:"camera_serial,omitempty" db:"camera_serial"`
+	Resolution         *string  `json:"resolution,omitempty" db:"resolution"`
+	CameraStatus       *string  `json:"camera_status,omitempty" db:"camera_status"`
+	TalkBackSupport    *bool    `json:"talk_back_support,omitempty" db:"talk_back_support"`
+	NightVisionSupport *bool    `json:"night_vision_support,omitempty" db:"night_vision_support"`
+	CameraPriority     *int     `json:"camera_priority,omitempty" db:"camera_priority"`
+	ChannelNumber      *int     `json:"channel_number,omitempty" db:"channel_number"`
+}
+
+type CustomerRFMonitorItem struct {
+	ContractRFID        int      `json:"contract_rf_id" db:"contract_rf_id"`
+	FrequencyID         int      `json:"frequency_id" db:"frequency_id"`
+	FrequencyMHz        float64  `json:"frequency_mhz" db:"frequency_mhz"`
+	FrequencyName       string   `json:"frequency_name" db:"frequency_name"`
+	Description         *string  `json:"frequency_description,omitempty" db:"frequency_description"`
+	Category            string   `json:"category" db:"category"`
+	TypicalUsage        *string  `json:"typical_usage,omitempty" db:"typical_usage"`
+	SecurityImportance  string   `json:"security_importance" db:"security_importance"`
+	JammingRisk         string   `json:"jamming_risk" db:"jamming_risk"`
+	MonitoringEnabled   bool     `json:"monitoring_enabled" db:"monitoring_enabled"`
+	ThresholdDBm        float64  `json:"threshold_dbm" db:"threshold_dbm"`
+	AlertLevel          string   `json:"alert_level" db:"alert_level"`
+	ScanIntervalSeconds int      `json:"scan_interval_seconds" db:"scan_interval_seconds"`
+	AlertCooldownMinutes int     `json:"alert_cooldown_minutes" db:"alert_cooldown_minutes"`
+	CustomerNotes       *string  `json:"customer_notes,omitempty" db:"customer_notes"`
+}
+
+// Customer authentication request/response models
+type CustomerLoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
+type CustomerLoginResponse struct {
+	Token               string   `json:"token"`
+	ExpiresAt           time.Time `json:"expires_at"`
+	Customer            Customer `json:"customer"`
+	ForcePasswordChange bool     `json:"force_password_change"`
+}
+
+type CustomerChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" validate:"required"`
+	NewPassword     string `json:"new_password" validate:"required,min=8"`
+}
+
+// Customer Auth Context (similar to admin AuthContext)
+type CustomerAuthContext struct {
+	CustomerID  *int     `json:"customer_id,omitempty"`
+	Email       *string  `json:"email,omitempty"`
+	Name        *string  `json:"name,omitempty"`
+	SessionID   *string  `json:"session_id,omitempty"`
+	ContractIDs []int    `json:"contract_ids,omitempty"` // For quick contract access validation
+}
+
+// CanAccessContract checks if the customer can access a specific contract
+func (cac *CustomerAuthContext) CanAccessContract(contractID int) bool {
+	if cac.ContractIDs == nil {
+		return false
+	}
+	for _, id := range cac.ContractIDs {
+		if id == contractID {
+			return true
+		}
+	}
+	return false
 }
 
 // Contract represents a service contract
@@ -451,19 +605,26 @@ type UpdateContractRequest struct {
 	EndDate           *CustomDate `json:"end_date"`
 }
 
-// CreateCustomerRequest represents a request to create a new customer
 type CreateCustomerRequest struct {
 	NameOnContract string  `json:"name_on_contract" validate:"required"`
 	Address        string  `json:"address" validate:"required"`
 	UniqueID       string  `json:"unique_id" validate:"required"`
 	Email          *string `json:"email" validate:"omitempty,email"`
 	PhoneNumber    *string `json:"phone_number"`
+	Password       string  `json:"password" validate:"required,min=8"` // NEW: Required password field
+	Active         *bool   `json:"active"` // NEW: Optional, defaults to true
 }
 
-// UpdateCustomerRequest represents a request to update a customer
+// Admin customer password reset request
+type AdminResetCustomerPasswordRequest struct {
+	NewPassword string `json:"new_password" validate:"required,min=8"`
+}
+
+// Admin customer management requests (updated)
 type UpdateCustomerRequest struct {
 	NameOnContract *string `json:"name_on_contract"`
 	Address        *string `json:"address"`
 	Email          *string `json:"email" validate:"omitempty,email"`
 	PhoneNumber    *string `json:"phone_number"`
+	Active         *bool   `json:"active"` // NEW: Admin can activate/deactivate customers
 }

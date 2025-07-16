@@ -3,10 +3,13 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/mux" // if you're using Gorilla Mux router
 	"github.com/sense-security/api/models"
 	"github.com/sense-security/api/services"
 )
@@ -18,6 +21,10 @@ type AuthMiddleware struct {
 type contextKey string
 
 const AuthContextKey contextKey = "auth"
+
+type customerContextKey string
+
+const CustomerAuthContextKey customerContextKey = "customer_auth"
 
 func NewAuthMiddleware(authService *services.AuthService) *AuthMiddleware {
 	return &AuthMiddleware{
@@ -419,4 +426,149 @@ func getClientIP(r *http.Request) string {
 		ip = ip[:colon]
 	}
 	return ip
+}
+
+// RequireCustomerAuth middleware that requires customer authentication
+func (am *AuthMiddleware) RequireCustomerAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		customerAuthContext, err := am.authenticateCustomer(r)
+		if err != nil {
+			am.writeCustomerAuthErrorResponse(w, err)
+			return
+		}
+
+		// Add customer auth context to request
+		ctx := context.WithValue(r.Context(), CustomerAuthContextKey, customerAuthContext)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// RequireContractAccess middleware that ensures customer can access specific contract
+func (am *AuthMiddleware) RequireContractAccess(next http.Handler) http.Handler {
+	return am.RequireCustomerAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		customerAuthContext := GetCustomerAuthContext(r)
+		if customerAuthContext == nil {
+			am.writeErrorResponse(w, http.StatusUnauthorized, "Customer authentication required", "")
+			return
+		}
+
+		// Extract contract ID from URL path
+		vars := mux.Vars(r)
+		contractIDStr, exists := vars["contract_id"]
+		if !exists {
+			contractIDStr = vars["id"] // fallback for routes like /contracts/{id}
+		}
+
+		if contractIDStr != "" {
+			if contractID, err := strconv.Atoi(contractIDStr); err == nil {
+				if !customerAuthContext.CanAccessContract(contractID) {
+					am.writeErrorResponse(w, http.StatusForbidden, "Access denied to contract", 
+						fmt.Sprintf("Customer does not have access to contract %d", contractID))
+					return
+				}
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	}))
+}
+
+// OptionalCustomerAuth middleware that optionally authenticates customers
+func (am *AuthMiddleware) OptionalCustomerAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		customerAuthContext, _ := am.authenticateCustomer(r) // Ignore errors for optional auth
+
+		if customerAuthContext != nil {
+			ctx := context.WithValue(r.Context(), CustomerAuthContextKey, customerAuthContext)
+			r = r.WithContext(ctx)
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Helper methods for customer authentication
+
+func (am *AuthMiddleware) authenticateCustomer(r *http.Request) (*models.CustomerAuthContext, error) {
+	// Try JWT token from Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token := strings.TrimPrefix(authHeader, "Bearer ")
+			return am.authService.ValidateCustomerToken(token)
+		}
+	}
+
+	return nil, services.ErrInvalidCredentials
+}
+
+func (am *AuthMiddleware) writeCustomerAuthErrorResponse(w http.ResponseWriter, err error) {
+	var statusCode int
+	var message string
+
+	// Handle specific customer authentication errors
+	switch err {
+	case services.ErrCustomerInvalidCredentials:
+		statusCode = http.StatusUnauthorized
+		message = "Invalid email or password"
+	case services.ErrCustomerLocked:
+		statusCode = http.StatusLocked
+		message = "Customer account is locked"
+	case services.ErrCustomerInactive:
+		statusCode = http.StatusForbidden
+		message = "Customer account is inactive"
+	case services.ErrSessionExpired:
+		statusCode = http.StatusUnauthorized
+		message = "Session has expired"
+	case services.ErrInvalidToken:
+		statusCode = http.StatusUnauthorized
+		message = "Invalid or expired token"
+	default:
+		statusCode = http.StatusUnauthorized
+		message = "Customer authentication required"
+	}
+
+	am.writeErrorResponse(w, statusCode, message, err.Error())
+}
+
+// Helper functions for customer context
+
+// GetCustomerAuthContext extracts the customer auth context from request context
+func GetCustomerAuthContext(r *http.Request) *models.CustomerAuthContext {
+	if customerAuthContext, ok := r.Context().Value(CustomerAuthContextKey).(*models.CustomerAuthContext); ok {
+		return customerAuthContext
+	}
+	return nil
+}
+
+// GetCustomerID extracts the customer ID from customer auth context
+func GetCustomerID(r *http.Request) *int {
+	customerAuthContext := GetCustomerAuthContext(r)
+	if customerAuthContext != nil {
+		return customerAuthContext.CustomerID
+	}
+	return nil
+}
+
+// IsCustomerAuthenticated checks if the request has customer authentication
+func IsCustomerAuthenticated(r *http.Request) bool {
+	return GetCustomerAuthContext(r) != nil
+}
+
+// CustomerCanAccessContract checks if the customer can access a specific contract
+func CustomerCanAccessContract(r *http.Request, contractID int) bool {
+	customerAuthContext := GetCustomerAuthContext(r)
+	if customerAuthContext == nil {
+		return false
+	}
+	return customerAuthContext.CanAccessContract(contractID)
+}
+
+// GetCustomerContractIDs returns the contract IDs the customer has access to
+func GetCustomerContractIDs(r *http.Request) []int {
+	customerAuthContext := GetCustomerAuthContext(r)
+	if customerAuthContext == nil {
+		return nil
+	}
+	return customerAuthContext.ContractIDs
 }

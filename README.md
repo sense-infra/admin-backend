@@ -1,3 +1,4 @@
+
 # Sense Security Client API Documentation
 
 This section documents the **Client Authentication & Account API** for the Sense Security Platform.
@@ -17,8 +18,8 @@ Authenticate a customer and receive a JWT token.
 ### Request Body
 ```json
 {
-  "email": "john@example.com",
-  "password": "SecurePass123"
+  "email": "test@cust.com",
+  "password": "Aa123456#"
 }
 ```
 
@@ -26,17 +27,17 @@ Authenticate a customer and receive a JWT token.
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expires_at": "2025-07-15T23:59:59Z"
+  "expires_at": "2025-07-16T04:03:57.848612-07:00"
 }
 ```
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/login \
+curl -X POST http://localhost:8080/client/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-        "email": "john@example.com",
-        "password": "SecurePass123"
+        "email": "test@cust.com",
+        "password": "Aa123456#"
       }'
 ```
 
@@ -54,8 +55,8 @@ No content.
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/logout \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl -X POST http://localhost:8080/client/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -67,8 +68,8 @@ Allows a logged-in customer to change their password.
 ### Request Body
 ```json
 {
-  "old_password": "SecurePass123",
-  "new_password": "EvenMoreSecure456"
+  "old_password": "Aa123456#",
+  "new_password": "Bb7891011@"
 }
 ```
 
@@ -79,12 +80,12 @@ Allows a logged-in customer to change their password.
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/change-password \
-  -H "Authorization: Bearer eyJhbGciOi..." \
+curl -X POST http://localhost:8080/client/auth/change-password \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
-        "old_password": "SecurePass123",
-        "new_password": "EvenMoreSecure456"
+        "old_password": "Aa123456#",
+        "new_password": "Bb7891011@"
       }'
 ```
 
@@ -100,20 +101,20 @@ Returns the authenticated customer’s profile (read-only).
 ### Response `200 OK`
 ```json
 {
-  "customer_id": 42,
-  "name_on_contract": "John Doe",
-  "email": "john@example.com",
-  "phone_number": "555-1234",
-  "address": "123 Main St",
+  "customer_id": 5,
+  "name_on_contract": "cust11",
+  "email": "test@cust.com",
+  "phone_number": "1234567890",
+  "address": "123 Main Str",
   "active": true,
-  "created_at": "2025-06-01T10:30:00Z"
+  "created_at": "2025-06-15T13:28:35Z"
 }
 ```
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/profile \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -136,8 +137,8 @@ Returns a summary dashboard for the customer.
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/dashboard \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/dashboard \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -167,8 +168,8 @@ Lists all contracts for the authenticated customer.
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/contracts \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/contracts \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -196,8 +197,8 @@ Fetch details for a specific contract.
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/contracts/1001 \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/contracts/1001 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -226,8 +227,8 @@ Returns the service tier assigned to the specified contract.
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/contracts/1001/service-tier \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/contracts/1001/service-tier \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
