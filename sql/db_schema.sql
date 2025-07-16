@@ -1010,14 +1010,19 @@ SELECT
     st.name as service_tier_name,
     st.description as service_tier_description,
     cst.start_date as tier_start_date,
-    cst.end_date as tier_end_date
+    cst.end_date as tier_end_date,
+    -- Add a status column to indicate if contract is active or expired
+    CASE 
+        WHEN c.start_date <= CURDATE() AND c.end_date >= CURDATE() THEN 'ACTIVE'
+        WHEN c.start_date > CURDATE() THEN 'FUTURE'
+        ELSE 'EXPIRED'
+    END as contract_status
 FROM Contract c
 JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
 LEFT JOIN Contract_Service_Tier cst ON c.contract_id = cst.contract_id
     AND cst.start_date <= CURDATE()
     AND cst.end_date >= CURDATE()
-LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
-WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE();
+LEFT JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id;
 
 -- Customer Equipment Overview View
 CREATE VIEW Customer_Equipment_View AS
@@ -1056,8 +1061,7 @@ JOIN NVR_Controller_Mapping ncm ON n.nvr_id = ncm.nvr_id
 JOIN Controller ctrl ON ncm.controller_id = ctrl.controller_id
 JOIN Controller_Camera_Support ccs ON ctrl.controller_id = ccs.controller_id
 JOIN Camera cam ON ccs.camera_id = cam.camera_id
-LEFT JOIN NVR_Camera_Mapping ncm_map ON n.nvr_id = ncm_map.nvr_id AND cam.camera_id = ncm_map.camera_id
-WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE();
+LEFT JOIN NVR_Camera_Mapping ncm_map ON n.nvr_id = ncm_map.nvr_id AND cam.camera_id = ncm_map.camera_id;
 
 -- Customer RF Monitoring Configuration View
 CREATE VIEW Customer_RF_Monitoring_View AS
@@ -1088,8 +1092,7 @@ FROM Contract c
 JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
 JOIN Contract_RF_Monitoring crm ON c.contract_id = crm.contract_id
 JOIN RF_Frequency_Profile fp ON crm.frequency_id = fp.frequency_id
-WHERE c.start_date <= CURDATE() AND c.end_date >= CURDATE()
-    AND fp.active = TRUE
+WHERE fp.active = TRUE
 ORDER BY fp.security_importance DESC, fp.frequency_mhz;
 
 -- Customer Dashboard Summary View

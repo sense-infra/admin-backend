@@ -1753,10 +1753,16 @@ func (a *AuthService) GetCustomerContractServiceTier(customerID, contractID int)
 		return nil, fmt.Errorf("customer does not have access to contract")
 	}
 
+	// Get the service tier for this contract directly from the assignment table
+	// This works for both active and expired contracts
 	query := `SELECT st.service_tier_id, st.name, st.description
-		FROM Customer_Contracts_View ccv
-		JOIN Service_Tier st ON ccv.service_tier_id = st.service_tier_id
-		WHERE ccv.customer_id = ? AND ccv.contract_id = ?`
+		FROM Contract_Service_Tier cst
+		JOIN Service_Tier st ON cst.service_tier_id = st.service_tier_id
+		JOIN Contract c ON cst.contract_id = c.contract_id
+		JOIN Contract_Customer_Mapping ccm ON c.contract_id = ccm.contract_id
+		WHERE ccm.customer_id = ? AND cst.contract_id = ?
+		ORDER BY cst.start_date DESC
+		LIMIT 1`
 
 	var serviceTier models.ServiceTierBasic
 	err := a.db.Get(&serviceTier, query, customerID, contractID)
@@ -1843,15 +1849,37 @@ func (a *AuthService) getCustomerByID(customerID int) (*models.Customer, error) 
 }
 
 func (a *AuthService) getCustomerContractIDs(customerID int) ([]int, error) {
-	query := `SELECT DISTINCT contract_id FROM Customer_Contracts_View WHERE customer_id = ?`
+	// Use Contract_Customer_Mapping directly to get ALL contracts (not just active ones)
+	query := `SELECT DISTINCT ccm.contract_id 
+		FROM Contract_Customer_Mapping ccm 
+		JOIN Contract c ON ccm.contract_id = c.contract_id 
+		WHERE ccm.customer_id = ?`
 	var contractIDs []int
 	err := a.db.Select(&contractIDs, query, customerID)
 	return contractIDs, err
 }
 
+// Replace the existing getCustomerContracts method with this corrected version:
 func (a *AuthService) getCustomerContracts(customerID int) ([]models.CustomerContractDetail, error) {
-	// Get contracts with basic info
-	contractQuery := `SELECT * FROM Customer_Contracts_View WHERE customer_id = ? ORDER BY start_date DESC`
+	// Get contracts with basic info - now includes ALL contracts with status
+	contractQuery := `SELECT
+		customer_id,
+		contract_id,
+		service_address,
+		notification_email,
+		notification_phone,
+		start_date,
+		end_date,
+		contract_status,
+		service_tier_id,
+		service_tier_name,
+		service_tier_description,
+		tier_start_date,
+		tier_end_date
+		FROM Customer_Contracts_View
+		WHERE customer_id = ?
+		ORDER BY start_date DESC`
+
 	var contracts []models.CustomerContractDetail
 	err := a.db.Select(&contracts, contractQuery, customerID)
 	if err != nil {
@@ -1860,19 +1888,78 @@ func (a *AuthService) getCustomerContracts(customerID int) ([]models.CustomerCon
 
 	// For each contract, get equipment and RF monitoring
 	for i := range contracts {
+		// Initialize empty slices to avoid null in JSON
+		contracts[i].Equipment = []models.CustomerEquipmentItem{}
+		contracts[i].RFMonitoring = []models.CustomerRFMonitorItem{}
+
 		// Get equipment
-		equipmentQuery := `SELECT * FROM Customer_Equipment_View WHERE customer_id = ? AND contract_id = ?`
-		err = a.db.Select(&contracts[i].Equipment, equipmentQuery, customerID, contracts[i].ContractID)
+		equipmentQuery := `SELECT
+			customer_id,
+			contract_id,
+			COALESCE(nvr_id, 0) as nvr_id,
+			COALESCE(nvr_model, '') as nvr_model,
+			COALESCE(nvr_serial, '') as nvr_serial,
+			COALESCE(nvr_firmware, '') as nvr_firmware,
+			COALESCE(storage_capacity_gb, 0) as storage_capacity_gb,
+			COALESCE(controller_id, 0) as controller_id,
+			COALESCE(controller_type, '') as controller_type,
+			COALESCE(controller_model, '') as controller_model,
+			COALESCE(controller_serial, '') as controller_serial,
+			COALESCE(controller_firmware, '') as controller_firmware,
+			COALESCE(os_architecture, '') as os_architecture,
+			COALESCE(hw_encryption_enabled, false) as hw_encryption_enabled,
+			COALESCE(sw_encryption_enabled, false) as sw_encryption_enabled,
+			COALESCE(camera_id, 0) as camera_id,
+			COALESCE(camera_name, '') as camera_name,
+			COALESCE(camera_model, '') as camera_model,
+			COALESCE(camera_serial, '') as camera_serial,
+			COALESCE(resolution, '') as resolution,
+			COALESCE(camera_status, '') as camera_status,
+			COALESCE(talk_back_support, false) as talk_back_support,
+			COALESCE(night_vision_support, false) as night_vision_support,
+			COALESCE(camera_priority, 1) as camera_priority,
+			COALESCE(channel_number, 0) as channel_number
+			FROM Customer_Equipment_View
+			WHERE customer_id = ? AND contract_id = ?`
+
+		var equipment []models.CustomerEquipmentItem
+		err = a.db.Select(&equipment, equipmentQuery, customerID, contracts[i].ContractID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get equipment for contract %d: %w", contracts[i].ContractID, err)
+			// Log error but don't fail - equipment might not be configured yet
+			continue
 		}
+		contracts[i].Equipment = equipment
 
 		// Get RF monitoring
-		rfQuery := `SELECT * FROM Customer_RF_Monitoring_View WHERE customer_id = ? AND contract_id = ? ORDER BY security_importance DESC, frequency_mhz`
-		err = a.db.Select(&contracts[i].RFMonitoring, rfQuery, customerID, contracts[i].ContractID)
+		rfQuery := `SELECT
+			customer_id,
+			contract_id,
+			contract_rf_id,
+			frequency_id,
+			frequency_mhz,
+			frequency_name,
+			COALESCE(frequency_description, '') as frequency_description,
+			category,
+			COALESCE(typical_usage, '') as typical_usage,
+			security_importance,
+			jamming_risk,
+			monitoring_enabled,
+			threshold_dbm,
+			alert_level,
+			scan_interval_seconds,
+			alert_cooldown_minutes,
+			COALESCE(customer_notes, '') as customer_notes
+			FROM Customer_RF_Monitoring_View
+			WHERE customer_id = ? AND contract_id = ?
+			ORDER BY security_importance DESC, frequency_mhz`
+
+		var rfMonitoring []models.CustomerRFMonitorItem
+		err = a.db.Select(&rfMonitoring, rfQuery, customerID, contracts[i].ContractID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get RF monitoring for contract %d: %w", contracts[i].ContractID, err)
+			// Log error but don't fail - RF monitoring might not be configured yet
+			continue
 		}
+		contracts[i].RFMonitoring = rfMonitoring
 	}
 
 	return contracts, nil
@@ -1880,7 +1967,10 @@ func (a *AuthService) getCustomerContracts(customerID int) ([]models.CustomerCon
 
 func (a *AuthService) customerHasAccessToContract(customerID, contractID int) bool {
 	var count int
-	query := `SELECT COUNT(*) FROM Customer_Contracts_View WHERE customer_id = ? AND contract_id = ?`
+	query := `SELECT COUNT(*)
+		FROM Contract_Customer_Mapping ccm
+		JOIN Contract c ON ccm.contract_id = c.contract_id
+		WHERE ccm.customer_id = ? AND ccm.contract_id = ?`
 	err := a.db.Get(&count, query, customerID, contractID)
 	return err == nil && count > 0
 }
