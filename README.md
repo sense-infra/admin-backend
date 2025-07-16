@@ -1,3 +1,4 @@
+
 # Sense Security Client API Documentation
 
 This section documents the **Client Authentication & Account API** for the Sense Security Platform.
@@ -17,26 +18,26 @@ Authenticate a customer and receive a JWT token.
 ### Request Body
 ```json
 {
-  "email": "john@example.com",
-  "password": "SecurePass123"
+  "email": "test@cust.com",
+  "password": "Aa123456#"
 }
 ```
 
 ### Response `200 OK`
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expires_at": "2025-07-15T23:59:59Z"
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjdXN0b21lcl9pZCI6NSwiZW1haWwiOiJ0ZXN0QGN1c3QuY29tIiwibmFtZSI6ImN1c3QxMSIsInNlc3Npb25faWQiOiJ0M2JVR0ZYRUlYdWFDZmxwYXV2bUstZ3BMUkNUR1c1UTA5VklGdmV3eEcwPSIsImNvbnRyYWN0X2lkcyI6bnVsbCwiZXhwIjoxNzUyNjYzODM3LCJpYXQiOjE3NTI1Nzc0MzcsImp0aSI6InQzYlVHRlhFSVh1YUNmbHBhdXZtSy1ncExSQ1RHVzVRMDlWSUZ2ZXd4RzA9In0.K2uLP0WyES0X3Qcf8R6kNuFVVw1e_grYprvMB2nDL-4",
+  "expires_at": "2025-07-16T04:03:57.848612-07:00"
 }
 ```
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/login \
+curl -X POST http://localhost:8080/client/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-        "email": "john@example.com",
-        "password": "SecurePass123"
+        "email": "test@cust.com",
+        "password": "Aa123456#"
       }'
 ```
 
@@ -54,8 +55,8 @@ No content.
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/logout \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl -X POST http://localhost:8080/client/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -67,8 +68,8 @@ Allows a logged-in customer to change their password.
 ### Request Body
 ```json
 {
-  "old_password": "SecurePass123",
-  "new_password": "EvenMoreSecure456"
+  "old_password": "Aa123456#",
+  "new_password": "Bb7891011@"
 }
 ```
 
@@ -79,12 +80,12 @@ Allows a logged-in customer to change their password.
 
 ### cURL Example
 ```bash
-curl -X POST https://yourdomain.com/client/auth/change-password \
-  -H "Authorization: Bearer eyJhbGciOi..." \
+curl -X POST http://localhost:8080/client/auth/change-password \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
-        "old_password": "SecurePass123",
-        "new_password": "EvenMoreSecure456"
+        "old_password": "Aa123456#",
+        "new_password": "Bb7891011@"
       }'
 ```
 
@@ -100,143 +101,19 @@ Returns the authenticated customer’s profile (read-only).
 ### Response `200 OK`
 ```json
 {
-  "customer_id": 42,
-  "name_on_contract": "John Doe",
-  "email": "john@example.com",
-  "phone_number": "555-1234",
-  "address": "123 Main St",
+  "customer_id": 5,
+  "name_on_contract": "cust11",
+  "email": "test@cust.com",
+  "phone_number": "1234567890",
+  "address": "123 Main Str",
   "active": true,
-  "created_at": "2025-06-01T10:30:00Z"
+  "created_at": "2025-06-15T13:28:35Z"
 }
 ```
 
 ### cURL Example
 ```bash
-curl https://yourdomain.com/client/profile \
-  -H "Authorization: Bearer eyJhbGciOi..."
+curl http://localhost:8080/client/profile \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
-
----
-
-## GET `/client/dashboard`
-
-Returns a summary dashboard for the customer.
-
-### Headers
-- `Authorization: Bearer <JWT>`
-
-### Response `200 OK`
-```json
-{
-  "contract_count": 2,
-  "equipment_count": 5,
-  "active_alerts": 0
-}
-```
-
-### cURL Example
-```bash
-curl https://yourdomain.com/client/dashboard \
-  -H "Authorization: Bearer eyJhbGciOi..."
-```
-
----
-
-## GET `/client/contracts`
-
-Lists all contracts for the authenticated customer.
-
-### Headers
-- `Authorization: Bearer <JWT>`
-
-### Response `200 OK`
-```json
-[
-  {
-    "contract_id": 1001,
-    "name": "Main Office Monitoring",
-    "status": "active"
-  },
-  {
-    "contract_id": 1002,
-    "name": "Warehouse Coverage",
-    "status": "inactive"
-  }
-]
-```
-
-### cURL Example
-```bash
-curl https://yourdomain.com/client/contracts \
-  -H "Authorization: Bearer eyJhbGciOi..."
-```
-
----
-
-## GET `/client/contracts/{id}`
-
-Fetch details for a specific contract.
-
-### Path Parameter
-- `id` – Contract ID (integer)
-
-### Headers
-- `Authorization: Bearer <JWT>`
-
-### Response `200 OK`
-```json
-{
-  "contract_id": 1001,
-  "name": "Main Office Monitoring",
-  "status": "active",
-  "start_date": "2024-01-01",
-  "end_date": "2026-01-01"
-}
-```
-
-### cURL Example
-```bash
-curl https://yourdomain.com/client/contracts/1001 \
-  -H "Authorization: Bearer eyJhbGciOi..."
-```
-
----
-
-## GET `/client/contracts/{id}/service-tier`
-
-Returns the service tier assigned to the specified contract.
-
-### Path Parameter
-- `id` – Contract ID (integer)
-
-### Headers
-- `Authorization: Bearer <JWT>`
-
-### Response `200 OK`
-```json
-{
-  "tier": "Premium",
-  "features": [
-    "24/7 Monitoring",
-    "Unlimited Cameras",
-    "Remote Access Support"
-  ]
-}
-```
-
-### cURL Example
-```bash
-curl https://yourdomain.com/client/contracts/1001/service-tier \
-  -H "Authorization: Bearer eyJhbGciOi..."
-```
-
----
-
-## 🔐 Authentication Notes
-
-- All customer endpoints require a valid JWT via `Authorization: Bearer <token>`
-- Tokens expire based on server policy (e.g., 1–24 hours)
-- On logout, sessions are deleted and token is no longer valid
-- Passwords are securely stored using bcrypt
-- Customers must change password on first login if `force_password_change` is true
 
