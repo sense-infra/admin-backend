@@ -68,7 +68,7 @@ Allows a logged-in customer to change their password.
 ### Request Body
 ```json
 {
-  "old_password": "Aa123456#",
+  "current_password": "Aa123456#",
   "new_password": "Bb7891011@"
 }
 ```
@@ -84,7 +84,7 @@ curl -X POST http://localhost:8080/client/auth/change-password \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
-        "old_password": "Aa123456#",
+        "current_password": "Aa123456#",
         "new_password": "Bb7891011@"
       }'
 ```
