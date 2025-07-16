@@ -462,7 +462,7 @@ func (am *AuthMiddleware) RequireContractAccess(next http.Handler) http.Handler 
 		if contractIDStr != "" {
 			if contractID, err := strconv.Atoi(contractIDStr); err == nil {
 				if !customerAuthContext.CanAccessContract(contractID) {
-					am.writeErrorResponse(w, http.StatusForbidden, "Access denied to contract", 
+					am.writeErrorResponse(w, http.StatusForbidden, "Access denied to contract",
 						fmt.Sprintf("Customer does not have access to contract %d", contractID))
 					return
 				}

@@ -162,29 +162,36 @@ type CustomerDashboard struct {
 }
 
 type CustomerContractDetail struct {
-	ContractID           int                      `json:"contract_id" db:"contract_id"`
-	ServiceAddress       string                   `json:"service_address" db:"service_address"`
-	NotificationEmail    *string                  `json:"notification_email,omitempty" db:"notification_email"`
-	NotificationPhone    *string                  `json:"notification_phone,omitempty" db:"notification_phone"`
-	StartDate            time.Time                `json:"start_date" db:"start_date"`
-	EndDate              time.Time                `json:"end_date" db:"end_date"`
-	ServiceTierID        *int                     `json:"service_tier_id,omitempty" db:"service_tier_id"`
-	ServiceTierName      *string                  `json:"service_tier_name,omitempty" db:"service_tier_name"`
-	ServiceTierDescription *string                `json:"service_tier_description,omitempty" db:"service_tier_description"`
-	TierStartDate        *time.Time               `json:"tier_start_date,omitempty" db:"tier_start_date"`
-	TierEndDate          *time.Time               `json:"tier_end_date,omitempty" db:"tier_end_date"`
-	Equipment            []CustomerEquipmentItem  `json:"equipment"`
-	RFMonitoring         []CustomerRFMonitorItem  `json:"rf_monitoring"`
+	CustomerID             int                      `json:"customer_id" db:"customer_id"`
+	ContractID             int                      `json:"contract_id" db:"contract_id"`
+	ServiceAddress         string                   `json:"service_address" db:"service_address"`
+	NotificationEmail      *string                  `json:"notification_email,omitempty" db:"notification_email"`
+	NotificationPhone      *string                  `json:"notification_phone,omitempty" db:"notification_phone"`
+	StartDate              time.Time                `json:"start_date" db:"start_date"`
+	EndDate                time.Time                `json:"end_date" db:"end_date"`
+	ContractStatus         string                   `json:"contract_status" db:"contract_status"` // MAKE SURE THIS IS HERE
+	ServiceTierID          *int                     `json:"service_tier_id,omitempty" db:"service_tier_id"`
+	ServiceTierName        *string                  `json:"service_tier_name,omitempty" db:"service_tier_name"`
+	ServiceTierDescription *string                  `json:"service_tier_description,omitempty" db:"service_tier_description"`
+	TierStartDate          *time.Time               `json:"tier_start_date,omitempty" db:"tier_start_date"`
+	TierEndDate            *time.Time               `json:"tier_end_date,omitempty" db:"tier_end_date"`
+	Equipment              []CustomerEquipmentItem  `json:"equipment"`
+	RFMonitoring           []CustomerRFMonitorItem  `json:"rf_monitoring"`
 }
 
+// Replace the existing CustomerEquipmentItem struct with this:
 type CustomerEquipmentItem struct {
+	// Customer and Contract Info
+	CustomerID         int      `json:"customer_id" db:"customer_id"` // ADD THIS LINE
+	ContractID         int      `json:"contract_id" db:"contract_id"` // ADD THIS LINE
+	
 	// NVR
 	NVRID              *int     `json:"nvr_id,omitempty" db:"nvr_id"`
 	NVRModel           *string  `json:"nvr_model,omitempty" db:"nvr_model"`
 	NVRSerial          *string  `json:"nvr_serial,omitempty" db:"nvr_serial"`
 	NVRFirmware        *string  `json:"nvr_firmware,omitempty" db:"nvr_firmware"`
 	StorageCapacityGB  *int     `json:"storage_capacity_gb,omitempty" db:"storage_capacity_gb"`
-	
+
 	// Controller
 	ControllerID       *int     `json:"controller_id,omitempty" db:"controller_id"`
 	ControllerType     *string  `json:"controller_type,omitempty" db:"controller_type"`
@@ -194,7 +201,7 @@ type CustomerEquipmentItem struct {
 	OSArchitecture     *string  `json:"os_architecture,omitempty" db:"os_architecture"`
 	HWEncryptionEnabled *bool   `json:"hw_encryption_enabled,omitempty" db:"hw_encryption_enabled"`
 	SWEncryptionEnabled *bool   `json:"sw_encryption_enabled,omitempty" db:"sw_encryption_enabled"`
-	
+
 	// Camera
 	CameraID           *int     `json:"camera_id,omitempty" db:"camera_id"`
 	CameraName         *string  `json:"camera_name,omitempty" db:"camera_name"`
@@ -208,7 +215,10 @@ type CustomerEquipmentItem struct {
 	ChannelNumber      *int     `json:"channel_number,omitempty" db:"channel_number"`
 }
 
+// Replace the existing CustomerRFMonitorItem struct with this:
 type CustomerRFMonitorItem struct {
+	CustomerID          int      `json:"customer_id" db:"customer_id"` // ADD THIS LINE
+	ContractID          int      `json:"contract_id" db:"contract_id"` // ADD THIS LINE
 	ContractRFID        int      `json:"contract_rf_id" db:"contract_rf_id"`
 	FrequencyID         int      `json:"frequency_id" db:"frequency_id"`
 	FrequencyMHz        float64  `json:"frequency_mhz" db:"frequency_mhz"`
