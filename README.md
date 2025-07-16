@@ -26,7 +26,7 @@ Authenticate a customer and receive a JWT token.
 ### Response `200 OK`
 ```json
 {
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjdXN0b21lcl9pZCI6NSwiZW1haWwiOiJ0ZXN0QGN1c3QuY29tIiwibmFtZSI6ImN1c3QxMSIsInNlc3Npb25faWQiOiJ0M2JVR0ZYRUlYdWFDZmxwYXV2bUstZ3BMUkNUR1c1UTA5VklGdmV3eEcwPSIsImNvbnRyYWN0X2lkcyI6bnVsbCwiZXhwIjoxNzUyNjYzODM3LCJpYXQiOjE3NTI1Nzc0MzcsImp0aSI6InQzYlVHRlhFSVh1YUNmbHBhdXZtSy1ncExSQ1RHVzVRMDlWSUZ2ZXd4RzA9In0.K2uLP0WyES0X3Qcf8R6kNuFVVw1e_grYprvMB2nDL-4",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
   "expires_at": "2025-07-16T04:03:57.848612-07:00"
 }
 ```
@@ -116,4 +116,128 @@ Returns the authenticated customer’s profile (read-only).
 curl http://localhost:8080/client/profile \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
+
+---
+
+## GET `/client/dashboard`
+
+Returns a summary dashboard for the customer.
+
+### Headers
+- `Authorization: Bearer <JWT>`
+
+### Response `200 OK`
+```json
+{
+  "contract_count": 2,
+  "equipment_count": 5,
+  "active_alerts": 0
+}
+```
+
+### cURL Example
+```bash
+curl http://localhost:8080/client/dashboard \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## GET `/client/contracts`
+
+Lists all contracts for the authenticated customer.
+
+### Headers
+- `Authorization: Bearer <JWT>`
+
+### Response `200 OK`
+```json
+[
+  {
+    "contract_id": 1001,
+    "name": "Main Office Monitoring",
+    "status": "active"
+  },
+  {
+    "contract_id": 1002,
+    "name": "Warehouse Coverage",
+    "status": "inactive"
+  }
+]
+```
+
+### cURL Example
+```bash
+curl http://localhost:8080/client/contracts \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## GET `/client/contracts/{id}`
+
+Fetch details for a specific contract.
+
+### Path Parameter
+- `id` – Contract ID (integer)
+
+### Headers
+- `Authorization: Bearer <JWT>`
+
+### Response `200 OK`
+```json
+{
+  "contract_id": 1001,
+  "name": "Main Office Monitoring",
+  "status": "active",
+  "start_date": "2024-01-01",
+  "end_date": "2026-01-01"
+}
+```
+
+### cURL Example
+```bash
+curl http://localhost:8080/client/contracts/1001 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## GET `/client/contracts/{id}/service-tier`
+
+Returns the service tier assigned to the specified contract.
+
+### Path Parameter
+- `id` – Contract ID (integer)
+
+### Headers
+- `Authorization: Bearer <JWT>`
+
+### Response `200 OK`
+```json
+{
+  "tier": "Premium",
+  "features": [
+    "24/7 Monitoring",
+    "Unlimited Cameras",
+    "Remote Access Support"
+  ]
+}
+```
+
+### cURL Example
+```bash
+curl http://localhost:8080/client/contracts/1001/service-tier \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 🔐 Authentication Notes
+
+- All customer endpoints require a valid JWT via `Authorization: Bearer <token>`
+- Tokens expire based on server policy (e.g., 1–24 hours)
+- On logout, sessions are deleted and token is no longer valid
+- Passwords are securely stored using bcrypt
+- Customers must change password on first login if `force_password_change` is true
 
