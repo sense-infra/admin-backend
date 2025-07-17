@@ -33,7 +33,7 @@ Authenticate a customer and receive a JWT token.
 
 ### cURL Example
 ```bash
-curl -X POST http://localhost:8080/client/auth/login \
+curl -X POST https://admin.dev.senseinfra.cloud/v1/api/client/auth/login \
   -H "Content-Type: application/json" \
   -d '{
         "email": "test@cust.com",
@@ -55,7 +55,7 @@ No content.
 
 ### cURL Example
 ```bash
-curl -X POST http://localhost:8080/client/auth/logout \
+curl -X POST https://admin.dev.senseinfra.cloud/v1/api/client/auth/logout \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -80,7 +80,7 @@ Allows a logged-in customer to change their password.
 
 ### cURL Example
 ```bash
-curl -X POST http://localhost:8080/client/auth/change-password \
+curl -X POST https://admin.dev.senseinfra.cloud/v1/api/client/auth/change-password \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
   -H "Content-Type: application/json" \
   -d '{
@@ -113,7 +113,7 @@ Returns the authenticated customer’s profile (read-only).
 
 ### cURL Example
 ```bash
-curl http://localhost:8080/client/profile \
+curl https://admin.dev.senseinfra.cloud/v1/api/client/profile \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -137,7 +137,7 @@ Returns a summary dashboard for the customer.
 
 ### cURL Example
 ```bash
-curl http://localhost:8080/client/dashboard \
+curl https://admin.dev.senseinfra.cloud/v1/api/client/dashboard \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -168,7 +168,7 @@ Lists all contracts for the authenticated customer.
 
 ### cURL Example
 ```bash
-curl http://localhost:8080/client/contracts \
+curl https://admin.dev.senseinfra.cloud/v1/api/client/contracts \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -197,7 +197,7 @@ Fetch details for a specific contract.
 
 ### cURL Example
 ```bash
-curl http://localhost:8080/client/contracts/1001 \
+curl https://admin.dev.senseinfra.cloud/v1/api/client/contracts/1001 \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
@@ -227,7 +227,7 @@ Returns the service tier assigned to the specified contract.
 
 ### cURL Example
 ```bash
-curl http://localhost:8080/client/contracts/1001/service-tier \
+curl https://admin.dev.senseinfra.cloud/v1/api/client/contracts/1001/service-tier \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
